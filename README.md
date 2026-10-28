@@ -59,6 +59,9 @@ What `scan` proposes:
 - **Settings:** window, transition and animator animation scales to **0.5**; Private DNS to **dns.adguard-dns.com**
   (blocks ad domains). If the TV loses internet after the DNS change, `apply` puts the old DNS setting back by itself.
 
+Each proposed package shows its version, whether it's a system or user-installed app, its installer and first install date.
+For anything in `state/kept.txt` you're curious about: `./tv.sh pkg-info <package>`.
+
 Edit `state/proposal.tsv` to remove any line you want to keep before running `apply`.
 
 ## 4. Apps and YouTube
@@ -85,6 +88,7 @@ signs in or types passwords.
 | Command | Does |
 |---|---|
 | `./tv.sh info` | model, chip, Android version, memory |
+| `./tv.sh pkg-info <package>` | version, system/user app, installer, install date |
 | `./tv.sh status` | what tv.sh has changed, current setting values |
 | `./tv.sh key HOME` | press a remote key (`DPAD_UP/DOWN/LEFT/RIGHT`, `DPAD_CENTER`, `BACK`, `HOME`, `MEDIA_PLAY_PAUSE`, `VOLUME_UP`, `POWER`…) |
 | `./tv.sh screenshot` | save what the TV shows |

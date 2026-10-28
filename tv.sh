@@ -66,6 +66,32 @@ a() {
 }
 ash() { a shell "$@" | tr -d '\r'; }
 
+# q: quote one value for the TV's shell, because adb joins its arguments into a single command line
+q() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
+
+# launch <pkg>: start the app's TV launcher activity, the same one the home screen opens
+launch() {
+  local cat comp
+  for cat in LEANBACK_LAUNCHER LAUNCHER; do
+    comp=$(ash cmd package resolve-activity --brief -a android.intent.action.MAIN \
+           -c "android.intent.category.$cat" "$1" | tail -1)
+    case $comp in
+      */*) ash am start -n "$comp" | grep -q Error && return 1; return 0;;
+    esac
+  done
+  return 1
+}
+
+# pkg_info <pkg>: version, system or user app, installer, first install time
+pkg_info() {
+  ash dumpsys package "$1" | awk '
+    /versionName=/ && !v {sub(/.*versionName=/,""); v=$1}
+    /installerPackageName=/ && !i {sub(/.*installerPackageName=/,""); i=$1}
+    /firstInstallTime=/ && !f {sub(/.*firstInstallTime=/,""); f=$1" "$2}
+    /pkgFlags=\[/ && !s {s=($0 ~ / SYSTEM /) ? "system app" : "user-installed"}
+    END {printf "v%s, %s, installer %s, first installed %s", v?v:"?", s?s:"?", i?i:"none", f?f:"?"}'
+}
+
 need_device() {
   find_adb
   [ -n "$ADB" ] || die "adb not found. Run: ./tv.sh install-adb"
@@ -228,25 +254,26 @@ cmd_scan() {
     cls=$(classify "$p")
     path=$(printf '%s\n' "$all" | grep "=$p\$" | head -1 | sed 's/^package://; s/=[^=]*$//')
     if [ -n "$cls" ]; then
-      printf '%s\t%s\t%s\n' "$p" "$cls" "${path:-?}" >> "$PROPOSAL.tmp"; n=$((n+1))
+      printf '%s\t%s\t%s\t%s\n' "$p" "$cls" "${path:-?}" "$(pkg_info "$p")" >> "$PROPOSAL.tmp"; n=$((n+1))
     else
       printf '%s\t%s\n' "$p" "${path:-?}" >> "$STATE/kept.txt"; kept=$((kept+1))
     fi
   done
   {
     printf '# Proposed: disable (not uninstall) these packages. Delete a line to keep that app.\n'
-    printf '# package\tcategory\treason\tinstalled at\n'
+    printf '# package\tcategory\treason\tinstalled at\tdetails\n'
     cat "$PROPOSAL.tmp"
   } > "$PROPOSAL"
   rm -f "$PROPOSAL.tmp"
   step "Proposed cleanup ($n packages to disable, $kept left alone)"
-  awk -F'\t' '!/^#/ {printf "  %-55s %-15s %s\n", $1, $2, $3}' "$PROPOSAL"
+  awk -F'\t' '!/^#/ {printf "  %-55s %-15s %s\n  %55s %s | %s\n", $1, $2, $3, "", $4, $5}' "$PROPOSAL"
   step "Proposed settings"
   printf '%s\n' "$TOUCHED_SETTINGS" | while IFS=: read -r ns key val; do
     printf '  %-40s %-22s -> %s\n' "$ns $key" "$(ash settings get "$ns" "$key")" "$val"
   done
   say ""
   say "Everything else ($kept packages, including anything unrecognized) stays untouched; see $STATE/kept.txt."
+  say "Details on any of them: ./tv.sh pkg-info <package>  (no package: all of kept.txt, slow)"
   say "Review $PROPOSAL, delete any line you want to keep, then run: ./tv.sh apply"
 }
 
@@ -404,7 +431,7 @@ cmd_install_app() {
     printf 'uninstall %s\n' "$new" >> "$CHANGES"
     write_undo
     ok "installed $new (undo removes it)"
-    ash monkey -p "$new" -c android.intent.category.LEANBACK_LAUNCHER 1 >/dev/null 2>&1 &&
+    launch "$new" &&
       ok "opened $new on the TV"
   else
     ok "installed (it was already present, so it was updated in place and undo leaves it)"
@@ -470,7 +497,7 @@ cmd_play() {
 
   step "Opening YouTube from a fresh start"
   ash am force-stop "$YT"
-  ash monkey -p "$YT" -c android.intent.category.LEANBACK_LAUNCHER 1 >/dev/null
+  launch "$YT" || die "Could not open YouTube's launcher activity."
   local i
   for i in $(seq 1 20); do
     ash dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | grep -q "$YT" && break
@@ -501,16 +528,16 @@ cmd_play() {
   if ! check_screen 'search' 'the YouTube search screen'; then
     say "  Falling back to YouTube's search intent with the query filled in."
     ash am start -a android.intent.action.SEARCH -n "$YT/com.google.android.apps.youtube.tv.activity.ShellActivity" \
-      --es query "'$(printf '%s' "$query" | sed "s/'/'\\\\''/g")'" >/dev/null
+      --es query "$(q "$query")" >/dev/null
     typed=0
     sleep 4
   fi
 
   if [ $typed = 1 ]; then
     step "Typing \"$query\""
-    local q; q=$(printf '%s' "$query" | sed 's/[^A-Za-z0-9 ._-]//g; s/ /%s/g')
-    [ -n "$q" ] || die "This name has no characters adb can type; use plain letters, or play a link: ./tv.sh play-url <youtube-url>"
-    a shell input text "$q"; sleep "$STEP_DELAY"
+    local typed_q; typed_q=$(printf '%s' "$query" | sed 's/[^A-Za-z0-9 ._-]//g; s/ /%s/g')
+    [ -n "$typed_q" ] || die "This name has no characters adb can type; use plain letters, or play a link: ./tv.sh play-url <youtube-url>"
+    a shell input text "$(q "$typed_q")"; sleep "$STEP_DELAY"
     key ENTER
     sleep 3
   fi
@@ -550,7 +577,7 @@ cmd_play_url() {
   need_device
   key WAKEUP
   step "Opening $url in YouTube"
-  ash am start -a android.intent.action.VIEW -d "'$url'" "$YT" >/dev/null
+  ash am start -a android.intent.action.VIEW -d "$(q "$url")" "$YT" >/dev/null
   wait_playing && ok "playing" || warn "No playing state reported; check the TV (\"Who's watching?\" may need a press of OK)."
 }
 
@@ -584,6 +611,16 @@ cmd_monitor() {
 }
 
 # ---------------------------------------------------------------------- misc
+cmd_pkg_info() {
+  need_device
+  local p
+  if [ $# -eq 0 ]; then
+    [ -f "$STATE/kept.txt" ] || die "usage: ./tv.sh pkg-info <package>... (or run scan first)"
+    set -- $(cut -f1 "$STATE/kept.txt")
+  fi
+  for p in "$@"; do printf '%-55s %s\n' "$p" "$(pkg_info "$p")"; done
+}
+
 cmd_status() {
   need_device
   cmd_info
@@ -609,6 +646,7 @@ Cleanup (reversible)
   backup                          save packages, settings and undo commands (do this first)
   scan                            propose what to disable; nothing changes
   apply                           do the reviewed proposal (asks you to type APPLY)
+  pkg-info [package...]           version, system/user, installer, install date
   status                          what tv.sh has changed
   undo                            put everything back (or run state/undo.sh)
 
@@ -638,6 +676,7 @@ case $cmd in
   backup) cmd_backup;;
   scan) cmd_scan;;
   apply) cmd_apply;;
+  pkg-info) cmd_pkg_info "$@";;
   status) cmd_status;;
   undo) cmd_undo;;
   install-app) cmd_install_app "$@";;
