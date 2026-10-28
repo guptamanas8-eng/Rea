@@ -233,6 +233,9 @@ classify() {  # classify <pkg> -> "category<TAB>reason", or nothing to leave it 
     com.google.android.tvrecommendations) printf 'recommendation\tGoogle TV recommendations service\n'; return;;
     com.google.android.leanbacklauncher.recommendations) printf 'recommendation\trecommendation rows feed (separate from the launcher itself)\n'; return;;
     com.android.retaildemo) printf 'demo\tAndroid retail demo mode\n'; return;;
+    android.autoinstalls.config.google.gtvpai) printf 'ad\tPlay Auto Installs config: pushes promoted partner apps onto the TV\n'; return;;
+    com.tcl.esticker) printf 'demo\tTCL E-Sticker: shop-display feature stickers\n'; return;;
+    com.tcl.waterfall.overseas) printf 'recommendation\tTCL content recommendation feed\n'; return;;
   esac
   printf '%s' "$p" | grep -Eiq "$PROTECTED_RE" && return
   for pair in "ad:$AD_RE" "recommendation:$RECO_RE" "feedback:$FEEDBACK_RE" "demo:$DEMO_RE"; do
