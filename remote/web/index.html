@@ -30,6 +30,8 @@
   .apps { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; }
   .apps button { font-size:13px; padding:12px 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #status { position:fixed; left:16px; right:16px; bottom:12px; max-width:488px; margin:0 auto; padding:10px 12px; border-radius:10px; background:var(--panel); color:var(--dim); font-size:13px; opacity:0; transition:opacity .2s; pointer-events:none; }
+  #offline { display:none; margin:0 0 12px; padding:10px 12px; border-radius:10px; background:#3a1f22; color:#ffb4b4; font-size:14px; }
+  #offline.show { display:block; }
   #status.show { opacity:1; } #status.bad { color:var(--bad); }
   canvas { display:block; width:100%; aspect-ratio:16/9; border-radius:10px; touch-action:none; background:#fff; }
   .swatches { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0; }
@@ -39,6 +41,7 @@
 </style>
 </head>
 <body>
+<div id="offline">The TV isn't reachable. Turn it on with its remote (the phone can't switch on a TV that's fully off); this page reconnects by itself.</div>
 <nav>
   <button class="on" data-tab="remote">Remote</button>
   <button data-tab="sketch">Sketch</button>
@@ -238,6 +241,13 @@ api('/api/sketch').then(s => {
   background = s.background; strokes = s.strokes; $('#note').value = s.note || ''; sizeCanvas();
 });
 window.addEventListener('resize', sizeCanvas);
+
+// show a banner while the TV can't be reached
+async function checkTv() {
+  try { const j = await (await fetch('/api/status')).json(); $('#offline').classList.toggle('show', !j.online); }
+  catch (e) { $('#offline').classList.add('show'); $('#offline').textContent = 'Lost contact with the server: is bash tv.sh remote still running in Termux?'; }
+}
+checkTv(); setInterval(checkTv, 10000);
 </script>
 </body>
 </html>

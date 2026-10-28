@@ -75,8 +75,14 @@ SERIAL = serial()
 _log_lock = threading.Lock()
 
 
-def adb(*args, timeout=20):
-    """Run adb against the TV, logged like tv.sh so the monitor shows it."""
+OFFLINE_RE = re.compile(r"not found|offline|no devices|unauthorized|closed|cannot connect|Connection refused")
+
+
+def adb(*args, timeout=20, reconnect=True):
+    """Run adb against the TV, logged like tv.sh so the monitor shows it.
+
+    When the TV has dropped off (switched off, Wi-Fi reconnect), reconnect once and retry.
+    """
     cid = f"{os.getpid()}-{time.monotonic_ns() % 1000000}"
     line = " ".join(args)
     with _log_lock, open(LOG, "a") as f:
@@ -89,7 +95,23 @@ def adb(*args, timeout=20):
         out, rc = "timed out", 124
     with _log_lock, open(LOG, "a") as f:
         f.write(f"END {cid} {ts()} rc={rc}\n")
+    if rc != 0 and reconnect and args[0] != "connect" and OFFLINE_RE.search(out):
+        if tv_reconnect():
+            return adb(*args, timeout=timeout, reconnect=False)
+        out = "The TV isn't reachable. Turn it on (and check it's on Wi-Fi), then try again."
     return rc, out
+
+
+def tv_reconnect():
+    subprocess.run([ADB, "disconnect", SERIAL], capture_output=True, timeout=10)
+    try:
+        r = subprocess.run([ADB, "connect", SERIAL], capture_output=True, text=True, timeout=15)
+    except subprocess.TimeoutExpired:
+        return False
+    if "connected to" not in r.stdout:
+        return False
+    st = subprocess.run([ADB, "-s", SERIAL, "get-state"], capture_output=True, text=True, timeout=10)
+    return st.stdout.strip() == "device"
 
 
 def shell(cmd):
@@ -258,7 +280,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {"apps": tv_apps()})
         if path == "/api/status":
             rc, out = adb("get-state")
-            return self.send(200, {"tv": SERIAL, "state": out if rc == 0 else "offline"})
+            return self.send(200, {"tv": SERIAL, "online": rc == 0 and out == "device"})
         self.send(404, {"error": "not found"})
 
     def do_POST(self):
@@ -364,7 +386,8 @@ def main():
         ip = local_ip()
     except OSError:
         ip = "<this-device-ip>"
-    print(f"TV remote for {SERIAL}")
+    print(f"TV remote for {SERIAL}" + ("" if adb("get-state")[0] == 0 else
+          "  (TV not reachable right now; the remote reconnects when it's back)"))
     print(f"  remote and sketch pad: http://127.0.0.1:{PORT}  (open in this phone's browser)")
     print(f"  board for the TV:      http://{ip}:{PORT}/board")
     print("  Ctrl-C to stop")

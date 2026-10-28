@@ -617,8 +617,13 @@ cmd_monitor() {
 
 # ---------------------------------------------------------------------- misc
 cmd_remote() {
-  need_device
+  # no need_device: the remote starts with the TV off and reconnects when it's back
+  find_adb
+  [ -n "$ADB" ] || die "adb not found. In Termux: pkg install android-tools"
+  [ -n "${TV:-$(cat "$STATE/device" 2>/dev/null)}" ] || die "No TV yet. Run: bash tv.sh connect <tv-ip>"
   command -v python3 >/dev/null || die "python3 is missing. In Termux: pkg install python"
+  # keep Android from pausing Termux while you're in the browser
+  command -v termux-wake-lock >/dev/null && termux-wake-lock
   exec python3 "$SCRIPT_DIR/remote/server.py"
 }
 
