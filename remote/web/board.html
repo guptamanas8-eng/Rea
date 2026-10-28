@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch Board</title>
+<style>
+  html, body { margin:0; height:100%; overflow:hidden; background:#fff; font-family:system-ui, sans-serif; }
+  canvas { position:fixed; inset:0; width:100vw; height:100vh; }
+  #note { position:fixed; top:4vh; left:0; right:0; text-align:center; font-size:5.5vh; font-weight:700; padding:0 6vw; pointer-events:none; }
+  #live { position:fixed; right:2vw; bottom:2vh; font-size:2vh; padding:.4em .8em; border-radius:1em; background:rgba(0,0,0,.55); color:#fff; }
+</style>
+</head>
+<body>
+<canvas id="board"></canvas>
+<div id="note"></div>
+<div id="live">connecting…</div>
+<script>
+const cv = document.getElementById('board'), ctx = cv.getContext('2d');
+const noteEl = document.getElementById('note'), live = document.getElementById('live');
+let state = { background: '#ffffff', note: '', strokes: [] };
+
+function contrast(hex) {  // dark text on light backgrounds, light text on dark ones
+  const n = parseInt(hex.slice(1), 16), l = 0.299 * (n >> 16) + 0.587 * (n >> 8 & 255) + 0.114 * (n & 255);
+  return l > 140 ? '#111' : '#fff';
+}
+function size() { cv.width = innerWidth * devicePixelRatio; cv.height = innerHeight * devicePixelRatio; redraw(); }
+function seg(s, from) {
+  const p = s.points, sc = cv.height / 1080;
+  ctx.strokeStyle = s.color; ctx.fillStyle = s.color; ctx.lineWidth = s.width * sc; ctx.lineCap = ctx.lineJoin = 'round';
+  if (p.length === 1) { ctx.beginPath(); ctx.arc(p[0][0] * cv.width, p[0][1] * cv.height, s.width * sc / 2, 0, 7); ctx.fill(); return; }
+  ctx.beginPath(); const a = Math.max(0, from - 1); ctx.moveTo(p[a][0] * cv.width, p[a][1] * cv.height);
+  for (let i = a + 1; i < p.length; i++) ctx.lineTo(p[i][0] * cv.width, p[i][1] * cv.height);
+  ctx.stroke();
+}
+function redraw() {
+  ctx.fillStyle = state.background; ctx.fillRect(0, 0, cv.width, cv.height);
+  state.strokes.forEach(s => seg(s, 0));
+  document.body.style.background = state.background;
+  noteEl.textContent = state.note || ''; noteEl.style.color = contrast(state.background);
+}
+function onEvent(ev) {
+  if (ev.type === 'reset') { state = ev.state; redraw(); return; }
+  if (ev.type === 'points') {
+    let s = state.strokes.find(x => x.id === ev.id);
+    if (!s) { s = { id: ev.id, color: ev.color, width: ev.width, points: [] }; state.strokes.push(s); }
+    const from = s.points.length; s.points.push(...ev.points); seg(s, from);
+  }
+}
+function connect() {
+  const es = new EventSource('/api/sketch/events');
+  es.onopen = () => { live.textContent = '● live'; };
+  es.onmessage = (m) => onEvent(JSON.parse(m.data));
+  es.onerror = () => { live.textContent = 'phone not reachable, retrying…'; };
+}
+addEventListener('resize', size);
+size(); connect();
+</script>
+</body>
+</html>

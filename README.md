@@ -83,6 +83,35 @@ when it can't confirm, it saves a screenshot, opens it, and asks you. Playback i
 session, because screenshots of a playing video are black (DRM). If YouTube asks you to sign in, it stops; it never
 signs in or types passwords.
 
+## 5. Phone remote and sketch board
+
+A remote for your phone, plus a drawing board on the TV that updates live as you draw.
+
+```bash
+pkg install python                                    # Termux, once
+bash tv.sh install-app guptamanas8-eng/Rea sketchboard # the TV app, once
+bash tv.sh remote                                     # start the remote; leave it running
+```
+
+Open **http://127.0.0.1:8765** in the phone's browser and use **Add to Home screen** to make it an app icon.
+
+- **Remote tab:** arrows (hold to repeat), OK, Back, Home, media and volume keys, typing into the TV's focused text box,
+  YouTube search, and a button for every TV app.
+- **Sketch tab:** draw with colours, sizes and an eraser; undo, clear and change the background; add a note line at the top.
+  **Show board on TV** opens the Sketch Board app on the TV and tells it where your phone is. After that, open
+  Sketch Board from the TV's home screen any time (press **OK** in it to reload).
+- **Put it on the home screen:** Google TV doesn't let other apps add rows to its home screen, so the closest is the
+  favourites row: go to **Apps**, highlight **Sketch Board**, **hold OK** → **Add to favourites**, then hold OK on it
+  again → **Move** it to the front.
+- Only the phone running the server can press keys or draw. Other devices on your Wi-Fi can view the board but get
+  "403" for everything else. The drawing is saved in `state/sketch.json` and comes back after a restart.
+- The phone's IP can change when it reconnects to Wi-Fi; tap **Show board on TV** again if the board says it can't
+  reach your phone.
+
+Sketch Board (`sketchboard/`) is built from this repo by GitHub Actions and published as a release here, so
+`install-app` installs it the same way as any other app. It is signed with `sketchboard/debug.keystore`, a deliberately
+public key whose only job is letting new builds install over old ones. Uninstall: `adb uninstall com.guptamanas8.sketchboard`.
+
 ## Cheat sheet
 
 | Command | Does |

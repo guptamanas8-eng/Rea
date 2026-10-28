@@ -616,6 +616,12 @@ cmd_monitor() {
 }
 
 # ---------------------------------------------------------------------- misc
+cmd_remote() {
+  need_device
+  command -v python3 >/dev/null || die "python3 is missing. In Termux: pkg install python"
+  exec python3 "$SCRIPT_DIR/remote/server.py"
+}
+
 cmd_pkg_info() {
   need_device
   local p
@@ -660,6 +666,7 @@ Apps and playback
                                   (default truefedex/tv-bro, the TV Bro browser)
   play [--profile N] "name"       open YouTube, search, and play with real key presses
   play-url <youtube-url>          play a specific YouTube link
+  remote                          phone remote + live sketch board at http://127.0.0.1:8765
 
 Other
   monitor                         run in a second terminal: commands + logcat while they run
@@ -687,6 +694,7 @@ case $cmd in
   install-app) cmd_install_app "$@";;
   play) cmd_play "$@";;
   play-url) cmd_play_url "$@";;
+  remote) cmd_remote;;
   monitor) cmd_monitor;;
   key) need_device; key "${1:?usage: ./tv.sh key HOME}";;
   screenshot) need_device; f=$(shot manual); say "$f"; open_file "$f";;

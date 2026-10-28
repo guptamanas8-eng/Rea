@@ -1,0 +1,31 @@
+name: Sketch Board APK
+
+# Builds the TV app from sketchboard/ and publishes it as a GitHub release,
+# so `bash tv.sh install-app guptamanas8-eng/Rea sketchboard` can install it.
+on:
+  push:
+    paths:
+      - "sketchboard/**"
+      - ".github/workflows/sketchboard.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build APK
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+        run: bash sketchboard/build.sh
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: sketchboard-v1.0.${{ github.run_number }}
+        run: |
+          gh release create "$TAG" sketchboard/build/SketchBoard.apk \
+            --target "$GITHUB_SHA" --title "Sketch Board 1.0.${{ github.run_number }}" \
+            --notes "TV app for the tv.sh sketch board. Built by GitHub Actions from $GITHUB_SHA."

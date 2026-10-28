@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#14161a">
+<title>TV Remote</title>
+<style>
+  :root { --bg:#14161a; --panel:#1f232a; --key:#2b3039; --key-on:#3d4452; --fg:#eef1f5; --dim:#9aa3b2; --accent:#4f8cff; --bad:#ff6b6b; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.35 system-ui, sans-serif; }
+  body { padding:12px 16px 24px; max-width:520px; margin:0 auto; user-select:none; }
+  nav { display:flex; gap:8px; margin-bottom:14px; }
+  nav button { flex:1; padding:10px; border-radius:10px; border:0; background:var(--panel); color:var(--dim); font-size:16px; }
+  nav button.on { background:var(--accent); color:#fff; }
+  section { display:none; } section.on { display:block; }
+  .row { display:flex; gap:10px; margin:10px 0; }
+  .row > * { flex:1; }
+  button.k { border:0; border-radius:12px; background:var(--key); color:var(--fg); font-size:15px; padding:14px 6px; touch-action:manipulation; }
+  button.k:active, button.k.held { background:var(--key-on); }
+  .pad { position:relative; width:min(78vw, 300px); aspect-ratio:1; margin:16px auto; border-radius:50%; background:var(--panel); }
+  .pad button { position:absolute; border:0; background:transparent; color:var(--fg); font-size:26px; width:34%; height:34%; border-radius:50%; }
+  .pad button:active { background:var(--key-on); }
+  .pad .up { top:0; left:33%; } .pad .down { bottom:0; left:33%; }
+  .pad .left { left:0; top:33%; } .pad .right { right:0; top:33%; }
+  .pad .ok { left:30%; top:30%; width:40%; height:40%; background:var(--key); font-size:18px; font-weight:600; }
+  input[type=text] { width:100%; padding:12px; border-radius:10px; border:1px solid #333a45; background:var(--panel); color:var(--fg); font-size:16px; }
+  .send { display:flex; gap:8px; margin:10px 0; } .send button { flex:0 0 auto; padding:0 16px; }
+  h2 { font-size:13px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim); margin:20px 0 6px; font-weight:600; }
+  .apps { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; }
+  .apps button { font-size:13px; padding:12px 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #status { position:fixed; left:16px; right:16px; bottom:12px; max-width:488px; margin:0 auto; padding:10px 12px; border-radius:10px; background:var(--panel); color:var(--dim); font-size:13px; opacity:0; transition:opacity .2s; pointer-events:none; }
+  #status.show { opacity:1; } #status.bad { color:var(--bad); }
+  canvas { display:block; width:100%; aspect-ratio:16/9; border-radius:10px; touch-action:none; background:#fff; }
+  .swatches { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0; }
+  .swatches button { width:34px; height:34px; border-radius:50%; border:3px solid transparent; }
+  .swatches button.on { border-color:var(--fg); }
+  .sizes button.on { background:var(--accent); }
+</style>
+</head>
+<body>
+<nav>
+  <button class="on" data-tab="remote">Remote</button>
+  <button data-tab="sketch">Sketch</button>
+</nav>
+
+<section id="remote" class="on">
+  <div class="row">
+    <button class="k" data-key="POWER">⏻ Power</button>
+    <button class="k" data-key="TV_INPUT">Input</button>
+    <button class="k" data-key="SETTINGS">⚙ Settings</button>
+  </div>
+  <div class="pad">
+    <button class="up" data-key="DPAD_UP" data-repeat>▲</button>
+    <button class="left" data-key="DPAD_LEFT" data-repeat>◀</button>
+    <button class="ok" data-key="DPAD_CENTER">OK</button>
+    <button class="right" data-key="DPAD_RIGHT" data-repeat>▶</button>
+    <button class="down" data-key="DPAD_DOWN" data-repeat>▼</button>
+  </div>
+  <div class="row">
+    <button class="k" data-key="BACK">↩ Back</button>
+    <button class="k" data-key="HOME">⌂ Home</button>
+    <button class="k" data-key="MENU">☰ Menu</button>
+  </div>
+  <div class="row">
+    <button class="k" data-key="MEDIA_REWIND">⏪</button>
+    <button class="k" data-key="MEDIA_PLAY_PAUSE">⏯</button>
+    <button class="k" data-key="MEDIA_FAST_FORWARD">⏩</button>
+  </div>
+  <div class="row">
+    <button class="k" data-key="VOLUME_DOWN" data-repeat>🔉 −</button>
+    <button class="k" data-key="VOLUME_MUTE">🔇</button>
+    <button class="k" data-key="VOLUME_UP" data-repeat>🔊 +</button>
+  </div>
+
+  <h2>Type on the TV</h2>
+  <div class="send">
+    <input id="text" type="text" placeholder="Text for the focused box" autocomplete="off">
+    <button class="k" id="sendText">Send</button>
+    <button class="k" data-key="DEL">⌫</button>
+  </div>
+
+  <h2>Search YouTube</h2>
+  <div class="send">
+    <input id="yt" type="text" placeholder="Video name" autocomplete="off">
+    <button class="k" id="sendYt">Search</button>
+  </div>
+
+  <h2>Apps</h2>
+  <div class="apps" id="apps"><button class="k" disabled>Loading…</button></div>
+</section>
+
+<section id="sketch">
+  <canvas id="pad"></canvas>
+  <div class="swatches" id="colors"></div>
+  <div class="row sizes" id="sizes">
+    <button class="k" data-size="4">Thin</button>
+    <button class="k on" data-size="10">Medium</button>
+    <button class="k" data-size="24">Thick</button>
+    <button class="k" data-size="eraser">Eraser</button>
+  </div>
+  <div class="row">
+    <button class="k" id="undo">↶ Undo</button>
+    <button class="k" id="clear">Clear</button>
+    <button class="k" id="bg">Background</button>
+  </div>
+  <h2>Note at the top of the board</h2>
+  <div class="send">
+    <input id="note" type="text" maxlength="120" placeholder="e.g. Dinner at 8!" autocomplete="off">
+    <button class="k" id="sendNote">Set</button>
+  </div>
+  <div class="row"><button class="k" id="showBoard" style="background:var(--accent)">Show board on TV</button></div>
+</section>
+
+<div id="status"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let statusTimer;
+function status(msg, bad) {
+  const el = $('#status');
+  el.textContent = msg; el.className = 'show' + (bad ? ' bad' : '');
+  clearTimeout(statusTimer); statusTimer = setTimeout(() => el.className = '', bad ? 6000 : 1800);
+}
+async function api(path, body) {
+  try {
+    const r = await fetch(path, { method: body === undefined ? 'GET' : 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const j = await r.json();
+    if (!r.ok || j.ok === false) status(j.error || j.out || ('Error ' + r.status), true);
+    return j;
+  } catch (e) { status('Lost contact with the server in Termux', true); return {}; }
+}
+
+// tabs
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button, section').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); $('#' + b.dataset.tab).classList.add('on');
+  if (b.dataset.tab === 'sketch') sizeCanvas();
+});
+
+// keys, with repeat while held for arrows and volume
+document.querySelectorAll('[data-key]').forEach(b => {
+  let t1, t2;
+  const press = () => { if (navigator.vibrate) navigator.vibrate(10); api('/api/key', { key: b.dataset.key }); };
+  const stop = () => { clearTimeout(t1); clearInterval(t2); b.classList.remove('held'); };
+  b.addEventListener('pointerdown', e => {
+    e.preventDefault(); press(); b.classList.add('held');
+    if (b.hasAttribute('data-repeat')) t1 = setTimeout(() => t2 = setInterval(press, 180), 450);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => b.addEventListener(ev, stop));
+});
+
+$('#sendText').onclick = async () => { const t = $('#text').value; if (t) { await api('/api/text', { text: t }); $('#text').value = ''; } };
+$('#sendYt').onclick = () => { const q = $('#yt').value.trim(); if (q) api('/api/youtube', { q }).then(j => j.ok && status('Searching YouTube on the TV')); };
+
+api('/api/apps').then(j => {
+  const box = $('#apps'); box.innerHTML = '';
+  (j.apps || []).forEach(a => {
+    const b = document.createElement('button');
+    b.className = 'k'; b.textContent = a.name; b.title = a.pkg;
+    b.onclick = () => api('/api/launch', { pkg: a.pkg }).then(r => r.ok && status('Opened ' + a.name));
+    box.appendChild(b);
+  });
+  if (!box.children.length) box.innerHTML = '<button class="k" disabled>No apps found</button>';
+});
+
+// sketch pad: normalised 0..1 points, sent in small batches while drawing
+const COLORS = ['#111111', '#ffffff', '#e53935', '#fb8c00', '#fdd835', '#43a047', '#1e88e5', '#8e24aa', '#ec407a', '#6d4c41'];
+const BGS = ['#ffffff', '#111111', '#fff8e1', '#e3f2fd', '#1b5e20'];
+let color = COLORS[0], size = 10, eraser = false, background = '#ffffff', strokes = [];
+const cv = $('#pad'), ctx = cv.getContext('2d');
+COLORS.forEach((c, i) => {
+  const b = document.createElement('button');
+  b.style.background = c; if (i === 0) b.className = 'on';
+  b.onclick = () => { color = c; eraser = false; document.querySelectorAll('#colors button').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('#sizes button').forEach(x => x.classList.toggle('on', x.dataset.size == size)); };
+  $('#colors').appendChild(b);
+});
+document.querySelectorAll('#sizes button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#sizes button').forEach(x => x.classList.toggle('on', x === b));
+  if (b.dataset.size === 'eraser') eraser = true; else { eraser = false; size = +b.dataset.size; }
+});
+
+function sizeCanvas() {
+  const r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  if (!r.width) return;
+  cv.width = r.width * d; cv.height = r.height * d; redraw();
+}
+function seg(s, from) {
+  const p = s.points, sc = cv.height / 1080;
+  ctx.strokeStyle = s.color; ctx.fillStyle = s.color; ctx.lineWidth = s.width * sc; ctx.lineCap = ctx.lineJoin = 'round';
+  if (p.length === 1) { ctx.beginPath(); ctx.arc(p[0][0] * cv.width, p[0][1] * cv.height, s.width * sc / 2, 0, 7); ctx.fill(); return; }
+  ctx.beginPath(); const a = Math.max(0, from - 1); ctx.moveTo(p[a][0] * cv.width, p[a][1] * cv.height);
+  for (let i = a + 1; i < p.length; i++) ctx.lineTo(p[i][0] * cv.width, p[i][1] * cv.height);
+  ctx.stroke();
+}
+function redraw() { ctx.fillStyle = background; ctx.fillRect(0, 0, cv.width, cv.height); strokes.forEach(s => seg(s, 0)); }
+
+let cur = null, pending = [], flushTimer = null;
+function flush() {
+  flushTimer = null;
+  if (!cur || !pending.length) return;
+  const pts = pending; pending = [];
+  api('/api/sketch/points', { id: cur.id, color: cur.color, width: cur.width, points: pts });
+}
+function pt(e) { const r = cv.getBoundingClientRect();
+  return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))].map(v => +v.toFixed(4)); }
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  cur = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), color: eraser ? background : color,
+          width: eraser ? 40 : size, points: [pt(e)] };
+  strokes.push(cur); pending.push(cur.points[0]); seg(cur, 0);
+  flushTimer = setTimeout(flush, 40);
+});
+cv.addEventListener('pointermove', e => {
+  if (!cur) return;
+  const p = pt(e), last = cur.points[cur.points.length - 1];
+  if (Math.hypot(p[0] - last[0], p[1] - last[1]) < 0.002) return;
+  cur.points.push(p); pending.push(p); seg(cur, cur.points.length - 1);
+  if (pending.length >= 400) flush(); else if (!flushTimer) flushTimer = setTimeout(flush, 40);
+});
+['pointerup', 'pointercancel'].forEach(ev => cv.addEventListener(ev, () => { clearTimeout(flushTimer); flush(); cur = null; }));
+
+$('#undo').onclick = () => { strokes.pop(); redraw(); api('/api/sketch/undo', {}); };
+$('#clear').onclick = () => { if (confirm('Clear the board?')) { strokes = []; redraw(); api('/api/sketch/clear', {}); } };
+$('#bg').onclick = () => {
+  if (strokes.length && !confirm('Changing the background clears the board. Continue?')) return;
+  background = BGS[(BGS.indexOf(background) + 1) % BGS.length]; strokes = []; redraw();
+  api('/api/sketch/clear', { background });
+};
+$('#sendNote').onclick = () => api('/api/sketch/note', { note: $('#note').value }).then(j => j.ok && status('Note updated on the board'));
+$('#showBoard').onclick = () => api('/api/board/open', {}).then(j => j.ok && status(j.out));
+
+// start from what is already on the board
+api('/api/sketch').then(s => {
+  if (!s.strokes) return;
+  background = s.background; strokes = s.strokes; $('#note').value = s.note || ''; sizeCanvas();
+});
+window.addEventListener('resize', sizeCanvas);
+</script>
+</body>
+</html>
