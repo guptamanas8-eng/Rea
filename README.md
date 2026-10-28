@@ -96,7 +96,10 @@ bash tv.sh remote                                     # start the remote; leave 
 Open **http://127.0.0.1:8765** in the phone's browser and use **Add to Home screen** to make it an app icon.
 
 - **Remote tab:** arrows (hold to repeat), OK, Back, Home, media and volume keys, typing into the TV's focused text box,
-  YouTube search, and a button for every TV app.
+  YouTube search, which app is open (with **Close app** and **Recent**), and a searchable button for every app,
+  including phone apps installed on the TV (📱), which Google TV's home screen hides.
+- **Screen tab:** a live picture of the TV. Tap it to tap on the TV, swipe to scroll, hold for a long press; handy for
+  phone apps that expect touch. Video areas show black (copy protection) though the TV plays them normally.
 - **Sketch tab:** draw with colours, sizes and an eraser; undo, clear and change the background; add a note line at the top.
   **Show board on TV** opens the Sketch Board app on the TV and tells it where your phone is. After that, open
   Sketch Board from the TV's home screen any time (press **OK** in it to reload).

@@ -33,6 +33,15 @@
   #offline { display:none; margin:0 0 12px; padding:10px 12px; border-radius:10px; background:#3a1f22; color:#ffb4b4; font-size:14px; }
   #offline.show { display:block; }
   #status.show { opacity:1; } #status.bad { color:var(--bad); }
+  .now { display:flex; align-items:center; gap:8px; margin:0 0 10px; color:var(--dim); font-size:14px; }
+  .now b { color:var(--fg); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .now button { padding:8px 12px; font-size:13px; }
+  .apps button.phone::before { content:'📱 '; }
+  #find { margin-bottom:8px; }
+  .screen { position:relative; width:100%; aspect-ratio:16/9; border-radius:10px; overflow:hidden; background:#000; touch-action:none; }
+  .screen img { width:100%; height:100%; object-fit:contain; display:block; -webkit-user-drag:none; pointer-events:none; }
+  .screen .msg { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--dim); font-size:14px; text-align:center; padding:0 20px; }
+  .hint { color:var(--dim); font-size:13px; margin:8px 0; }
   canvas { display:block; width:100%; aspect-ratio:16/9; border-radius:10px; touch-action:none; background:#fff; }
   .swatches { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0; }
   .swatches button { width:34px; height:34px; border-radius:50%; border:3px solid transparent; }
@@ -44,10 +53,15 @@
 <div id="offline">The TV isn't reachable. Turn it on with its remote (the phone can't switch on a TV that's fully off); this page reconnects by itself.</div>
 <nav>
   <button class="on" data-tab="remote">Remote</button>
+  <button data-tab="screen">Screen</button>
   <button data-tab="sketch">Sketch</button>
 </nav>
 
 <section id="remote" class="on">
+  <div class="now">Now open: <b id="nowName">…</b>
+    <button class="k" data-key="APP_SWITCH">Recent</button>
+    <button class="k" id="closeApp">Close app</button>
+  </div>
   <div class="row">
     <button class="k" data-key="POWER">⏻ Power</button>
     <button class="k" data-key="TV_INPUT">Input</button>
@@ -90,7 +104,26 @@
   </div>
 
   <h2>Apps</h2>
+  <input id="find" type="text" placeholder="Find an app" autocomplete="off">
   <div class="apps" id="apps"><button class="k" disabled>Loading…</button></div>
+  <p class="hint">📱 = phone app installed on the TV. Google TV's home screen hides these; use the Screen tab to tap around in them.</p>
+</section>
+
+<section id="screen">
+  <div class="screen" id="shot"><img id="shotImg" alt=""><div class="msg" id="shotMsg">Loading the TV screen…</div></div>
+  <p class="hint">Tap to tap on the TV, swipe to scroll, hold for a long press. Videos show black here (copy protection); the TV still plays them.</p>
+  <div class="row">
+    <button class="k" data-key="BACK">↩ Back</button>
+    <button class="k" data-key="HOME">⌂ Home</button>
+    <button class="k" data-key="APP_SWITCH">Recent</button>
+  </div>
+  <div class="row">
+    <button class="k" data-key="DPAD_LEFT" data-repeat>◀</button>
+    <button class="k" data-key="DPAD_UP" data-repeat>▲</button>
+    <button class="k" data-key="DPAD_CENTER">OK</button>
+    <button class="k" data-key="DPAD_DOWN" data-repeat>▼</button>
+    <button class="k" data-key="DPAD_RIGHT" data-repeat>▶</button>
+  </div>
 </section>
 
 <section id="sketch">
@@ -140,6 +173,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button, section').forEach(x => x.classList.remove('on'));
   b.classList.add('on'); $('#' + b.dataset.tab).classList.add('on');
   if (b.dataset.tab === 'sketch') sizeCanvas();
+  if (b.dataset.tab === 'screen') screenLoop();
 });
 
 // keys, with repeat while held for arrows and volume
@@ -157,16 +191,68 @@ document.querySelectorAll('[data-key]').forEach(b => {
 $('#sendText').onclick = async () => { const t = $('#text').value; if (t) { await api('/api/text', { text: t }); $('#text').value = ''; } };
 $('#sendYt').onclick = () => { const q = $('#yt').value.trim(); if (q) api('/api/youtube', { q }).then(j => j.ok && status('Searching YouTube on the TV')); };
 
-api('/api/apps').then(j => {
-  const box = $('#apps'); box.innerHTML = '';
-  (j.apps || []).forEach(a => {
+let allApps = [];
+function showApps() {
+  const box = $('#apps'), q = $('#find').value.trim().toLowerCase(); box.innerHTML = '';
+  allApps.filter(a => !q || a.name.toLowerCase().includes(q) || a.pkg.includes(q)).forEach(a => {
     const b = document.createElement('button');
-    b.className = 'k'; b.textContent = a.name; b.title = a.pkg;
-    b.onclick = () => api('/api/launch', { pkg: a.pkg }).then(r => r.ok && status('Opened ' + a.name));
+    b.className = 'k' + (a.kind === 'phone' ? ' phone' : ''); b.textContent = a.name; b.title = a.pkg;
+    b.onclick = () => api('/api/launch', { pkg: a.pkg }).then(r => { if (r.ok) { status('Opened ' + a.name); setTimeout(nowOpen, 1500); } });
     box.appendChild(b);
   });
   if (!box.children.length) box.innerHTML = '<button class="k" disabled>No apps found</button>';
-});
+}
+api('/api/apps').then(j => { allApps = j.apps || []; showApps(); });
+$('#find').oninput = showApps;
+
+async function nowOpen() {
+  try { const j = await (await fetch('/api/current')).json(); $('#nowName').textContent = j.name || 'home screen'; } catch (e) {}
+}
+$('#closeApp').onclick = () => api('/api/close', {}).then(j => { if (j.ok) { status(j.out); setTimeout(nowOpen, 800); } });
+nowOpen(); setInterval(() => { if (!document.hidden && $('#remote').classList.contains('on')) nowOpen(); }, 5000);
+document.querySelectorAll('[data-key]').forEach(b => b.addEventListener('pointerup', () => setTimeout(nowOpen, 1200)));
+
+// live TV screen: fetch the next frame as soon as the last one arrives, while the tab is open
+let screenRunning = false, lastUrl = null;
+async function screenLoop() {
+  if (screenRunning) return; screenRunning = true;
+  while ($('#screen').classList.contains('on') && !document.hidden) {
+    try {
+      const r = await fetch('/api/screen');
+      if (!r.ok) throw new Error((await r.json()).error);
+      const url = URL.createObjectURL(await r.blob());
+      $('#shotImg').src = url; if (lastUrl) URL.revokeObjectURL(lastUrl); lastUrl = url;
+      $('#shotMsg').style.display = 'none';
+    } catch (e) {
+      $('#shotMsg').textContent = e.message || 'Lost contact with the server'; $('#shotMsg').style.display = 'flex';
+      await new Promise(r => setTimeout(r, 3000));
+    }
+  }
+  screenRunning = false;
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && $('#screen').classList.contains('on')) screenLoop(); });
+
+// tap, swipe and long press on the picture, mapped onto the TV's screen
+(() => {
+  const el = $('#shot'); let start = null;
+  const norm = (e) => {  // the image keeps 16:9 inside the box; map to 0..1 of the TV screen
+    const r = el.getBoundingClientRect(), img = $('#shotImg');
+    const iw = img.naturalWidth || 16, ih = img.naturalHeight || 9, s = Math.min(r.width / iw, r.height / ih);
+    const w = iw * s, h = ih * s, ox = (r.width - w) / 2, oy = (r.height - h) / 2;
+    return { x: Math.min(1, Math.max(0, (e.clientX - r.left - ox) / w)), y: Math.min(1, Math.max(0, (e.clientY - r.top - oy) / h)) };
+  };
+  el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); start = { ...norm(e), t: Date.now() }; });
+  el.addEventListener('pointerup', e => {
+    if (!start) return;
+    const end = norm(e), dt = Date.now() - start.t, moved = Math.hypot(end.x - start.x, end.y - start.y) > 0.02;
+    if (navigator.vibrate) navigator.vibrate(10);
+    if (moved) api('/api/swipe', { x1: start.x, y1: start.y, x2: end.x, y2: end.y, ms: Math.min(1500, Math.max(150, dt)) });
+    else if (dt > 600) api('/api/swipe', { x1: start.x, y1: start.y, x2: start.x, y2: start.y, ms: 900 });
+    else api('/api/tap', { x: start.x, y: start.y });
+    start = null;
+  });
+  el.addEventListener('pointercancel', () => start = null);
+})();
 
 // sketch pad: normalised 0..1 points, sent in small batches while drawing
 const COLORS = ['#111111', '#ffffff', '#e53935', '#fb8c00', '#fdd835', '#43a047', '#1e88e5', '#8e24aa', '#ec407a', '#6d4c41'];

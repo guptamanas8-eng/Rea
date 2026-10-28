@@ -33,8 +33,10 @@ KEYS = {
     "MENU", "SETTINGS", "SEARCH", "VOLUME_UP", "VOLUME_DOWN", "VOLUME_MUTE",
     "MEDIA_PLAY_PAUSE", "MEDIA_NEXT", "MEDIA_PREVIOUS", "MEDIA_FAST_FORWARD",
     "MEDIA_REWIND", "POWER", "WAKEUP", "SLEEP", "TV_INPUT", "CHANNEL_UP",
-    "CHANNEL_DOWN", "DEL", "ENTER", "CAPTIONS", "GUIDE", "INFO",
+    "CHANNEL_DOWN", "DEL", "ENTER", "CAPTIONS", "GUIDE", "INFO", "APP_SWITCH",
 }
+# never force-stopped from the remote
+NO_CLOSE = {"com.google.android.apps.tv.launcherx", "com.android.systemui", "android"}
 FRIENDLY = {
     YT: "YouTube", "com.netflix.ninja": "Netflix",
     "com.amazon.amazonvideo.livingroom": "Prime Video", "in.startv.hotstar": "Hotstar",
@@ -129,12 +131,76 @@ def launch(pkg):
     return False, f"{pkg} has no TV launcher screen"
 
 
-def tv_apps():
+GENERIC = {"android", "app", "apps", "tv", "mobile", "client", "main", "ninja", "livingroom", "overseas", "international"}
+
+
+def app_name(pkg):
+    """Friendly name, else the most telling part of the package name (com.instagram.android -> Instagram)."""
+    if pkg in FRIENDLY:
+        return FRIENDLY[pkg]
+    parts = [p for p in pkg.split(".")[1:] if p.lower() not in GENERIC] or pkg.split(".")
+    return parts[-1].replace("_", " ")[:1].upper() + parts[-1].replace("_", " ")[1:]
+
+
+def launchable(category):
     _, out = shell("cmd package query-activities --brief -a android.intent.action.MAIN "
-                   "-c android.intent.category.LEANBACK_LAUNCHER")
-    pkgs = sorted({l.split("/")[0].strip() for l in out.splitlines() if "/" in l})
-    apps = [{"pkg": p, "name": FRIENDLY.get(p, p.split(".")[-1])} for p in pkgs if PKG_RE.match(p)]
-    return sorted(apps, key=lambda a: (a["pkg"] not in FRIENDLY, a["name"].lower()))
+                   f"-c android.intent.category.{category}")
+    return {l.split("/")[0].strip() for l in out.splitlines() if "/" in l} - {""}
+
+
+def tv_apps():
+    """TV apps, plus phone apps installed on the TV (the Google TV home screen hides those)."""
+    tv = launchable("LEANBACK_LAUNCHER")
+    phone = launchable("LAUNCHER") - tv
+    apps = [{"pkg": p, "name": app_name(p), "kind": "tv" if p in tv else "phone"}
+            for p in tv | phone if PKG_RE.match(p)]
+    return sorted(apps, key=lambda a: (a["kind"] != "tv", a["pkg"] not in FRIENDLY, a["name"].lower()))
+
+
+def current_app():
+    _, out = shell("dumpsys window")
+    m = re.search(r"mCurrentFocus=Window\{\S+ \S+ ([\w.]+)/", out) or \
+        re.search(r"mFocusedApp=.*? ([\w.]+)/", out)
+    return m.group(1) if m else None
+
+
+_screen_size = None
+
+
+def screen_size():
+    """Display size in the coordinates `input tap` uses."""
+    global _screen_size
+    if _screen_size is None:
+        _, out = shell("wm size")
+        sizes = re.findall(r"(\d+)x(\d+)", out)
+        if not sizes:
+            raise ValueError("couldn't read the TV's screen size")
+        _screen_size = tuple(map(int, sizes[-1]))  # override size when set, else physical
+    return _screen_size
+
+
+def screencap():
+    """One PNG of the TV screen (video areas come out black: DRM)."""
+    cid = f"{os.getpid()}-{time.monotonic_ns() % 1000000}"
+    with _log_lock, open(LOG, "a") as f:
+        f.write(f"START {cid} {ts()} adb exec-out screencap -p\n")
+    try:
+        r = subprocess.run([ADB, "-s", SERIAL, "exec-out", "screencap", "-p"],
+                           capture_output=True, timeout=20, stdin=subprocess.DEVNULL)
+        data, rc = r.stdout, r.returncode
+    except subprocess.TimeoutExpired:
+        data, rc = b"", 124
+    with _log_lock, open(LOG, "a") as f:
+        f.write(f"END {cid} {ts()} rc={rc}\n")
+    return data if data.startswith(b"\x89PNG") else None
+
+
+def to_px(x, y):
+    w, h = screen_size()
+    x, y = float(x), float(y)
+    if not (0 <= x <= 1 and 0 <= y <= 1):
+        raise ValueError("coordinates must be between 0 and 1")
+    return round(x * (w - 1)), round(y * (h - 1))
 
 
 def local_ip():
@@ -278,6 +344,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.page("index.html")
         if path == "/api/apps":
             return self.send(200, {"apps": tv_apps()})
+        if path == "/api/screen":
+            png = screencap()
+            if png is None:
+                return self.send(503, {"error": "The TV isn't reachable."})
+            return self.send(200, png, "image/png")
+        if path == "/api/current":
+            pkg = current_app()
+            return self.send(200, {"pkg": pkg, "name": app_name(pkg) if pkg else None})
         if path == "/api/status":
             rc, out = adb("get-state")
             return self.send(200, {"tv": SERIAL, "online": rc == 0 and out == "device"})
@@ -317,6 +391,22 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("bad package name")
             ok, out = launch(pkg)
             return {"ok": ok, "out": out}
+        if path == "/api/tap":
+            x, y = to_px(b["x"], b["y"])
+            rc, out = shell(f"input tap {x} {y}")
+            return {"ok": rc == 0, "out": out}
+        if path == "/api/swipe":
+            x1, y1 = to_px(b["x1"], b["y1"])
+            x2, y2 = to_px(b["x2"], b["y2"])
+            ms = max(50, min(3000, int(b.get("ms", 300))))
+            rc, out = shell(f"input swipe {x1} {y1} {x2} {y2} {ms}")
+            return {"ok": rc == 0, "out": out}
+        if path == "/api/close":
+            pkg = current_app()
+            if not pkg or pkg in NO_CLOSE:
+                return {"ok": False, "out": "No app is open (the home screen can't be closed)."}
+            rc, out = shell(f"am force-stop {pkg}")
+            return {"ok": rc == 0, "out": f"Closed {app_name(pkg)}"}
         if path == "/api/youtube":
             q = str(b["q"]).strip()[:150]
             if not q:
