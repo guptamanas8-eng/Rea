@@ -141,6 +141,8 @@ cmd_connect() {
   out=$("$ADB" connect "$target" 2>&1); say "$out"
   case $out in
     *"connected to"*) ;;
+    # first connection from this computer: the TV is showing its approval prompt
+    *"failed to authenticate"*|*unauthorized*) ;;
     *"No route to host"*)
       if [ "$(uname -s)" = Darwin ]; then
         die "No route to host. On macOS give your terminal Local Network access: System Settings > Privacy & Security > Local Network > turn on Terminal (or iTerm/VS Code), then quit and reopen the terminal and retry."
