@@ -35,6 +35,15 @@
   .log div { padding:4px 0; color:var(--dim); } .log .close { color:#ffd166; } .log .correct { color:#7fe08a; font-weight:700; }
   .timer { float:right; font-weight:800; font-variant-numeric:tabular-nums; }
   .scores div { display:flex; gap:8px; padding:4px 0; } .scores span:last-child { margin-left:auto; }
+  .pad { display:grid; grid-template-columns:1fr 1fr; gap:10px; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+  .pad button { min-height:120px; font-size:22px; font-weight:800; touch-action:none; user-select:none; -webkit-user-select:none; }
+  .pad button.held { filter:brightness(1.5); transform:scale(.97); }
+  .pad .gas { background:#2e7d32; } .pad .brake { background:#8e2a2a; } .pad .hit { background:#6a1b9a; min-height:84px; }
+  .racehud { display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; }
+  .racehud .pos { font-size:34px; font-weight:900; color:#ffeb3b; } .racehud .meta { color:var(--dim); }
+  .racehud .spd { margin-left:auto; font-weight:800; }
+  .hbar { height:10px; border-radius:5px; background:#333; margin-top:8px; overflow:hidden; } .hbar div { height:100%; background:#66bb6a; }
+  label.auto { display:flex; align-items:center; gap:8px; color:var(--dim); font-size:15px; margin:8px 0; }
   #toast { position:fixed; left:16px; right:16px; bottom:14px; max-width:488px; margin:0 auto; padding:12px; border-radius:12px; background:#2b3039; text-align:center; opacity:0; transition:opacity .2s; pointer-events:none; }
   #toast.show { opacity:1; }
 </style>
@@ -90,7 +99,7 @@ function joinScreen() {
     if (j.token) { token = j.token; store.set('tvgame-token', token); store.set('tvgame-name', n); buzz(30); connect(); }
   };
   name.onkeydown = e => { if (e.key === 'Enter') go(); };
-  return [h('h1', {}, view && view.mode === 'quiz' ? '⚡ Quiz Buzzer' : '✏️ Draw & Guess'),
+  return [h('h1', {}, { quiz: '⚡ Quiz Buzzer', race: '🏍️ Highway Brawl' }[view && view.mode] || '✏️ Draw & Guess'),
     view && view.phase === 'idle' ? h('div', { class: 'card dim' }, 'No game is open yet. Ask the host to pick one.') :
     h('div', { class: 'card' }, h('div', { class: 'send' }, name, h('button', { class: 'primary', onclick: go }, 'Join')))];
 }
@@ -140,11 +149,12 @@ function render() {
   const timer = v.seconds != null && v.phase !== 'reveal' ? h('span', { class: 'timer' }, v.seconds + 's') : null;
 
   // screens are rebuilt only when something you act on changes, so a stroke or tap in progress isn't interrupted
-  const key = [v.phase, v.mode, v.draw && v.draw.turn, v.draw && v.draw.you_draw, v.draw && v.draw.word, v.quiz && v.quiz.index, v.quiz && v.quiz.your_choice].join('|');
+  const key = [v.phase, v.mode, v.race && v.race.id, v.draw && v.draw.turn, v.draw && v.draw.you_draw, v.draw && v.draw.word, v.quiz && v.quiz.index, v.quiz && v.quiz.your_choice].join('|');
   if (key === lastKey && v.phase !== 'over') {  // same screen: refresh the changing bits in place
     const t = document.querySelector('.timer'); if (t && timer) t.textContent = timer.textContent;
     const hint = document.querySelector('.hint'); if (hint && v.draw && !v.draw.you_draw) hint.textContent = v.draw.hint;
     const s = document.querySelector('.scorebox'); if (s) s.replaceChildren(scores(v));
+    const rh = document.querySelector('.racehud-box'); if (rh && v.race) rh.replaceChildren(raceHud(v.race.hud));
     const m = document.querySelector('.me'); if (m) m.replaceWith(me);
     return;
   }
@@ -154,7 +164,7 @@ function render() {
 
   if (v.phase === 'lobby') {
     app.replaceChildren(me, h('div', { class: 'card center' }, h('h1', {}, 'You\'re in! 🎉'),
-      h('div', { class: 'dim' }, `Waiting for the host to start ${v.mode === 'draw' ? 'Draw & Guess' : 'the quiz'}…`)), h('div', { class: 'scorebox' }, scores(v)),
+      h('div', { class: 'dim' }, `Waiting for the host to start ${{ draw: 'Draw & Guess', quiz: 'the quiz', race: 'the race' }[v.mode]}…`)), h('div', { class: 'scorebox' }, scores(v)),
       h('button', { onclick: () => { if (confirm('Leave the game?')) post('leave', {}).then(() => { token = null; store.set('tvgame-token', null); connect(); }); } }, 'Leave'));
     return;
   }
@@ -213,6 +223,15 @@ function render() {
     setTimeout(() => input.focus(), 50);
     return;
   }
+  if (v.mode === 'race' && v.phase === 'race') {
+    if (!v.race.racing) {
+      app.replaceChildren(me, h('div', { class: 'card center' }, h('h1', {}, 'Race in progress'), h('div', { class: 'dim' }, 'You joined after the start. Watch the TV, you\'re in the next one!')));
+      return;
+    }
+    app.replaceChildren(me, h('div', { class: 'card racehud-box' }, raceHud(v.race.hud)), raceController(),
+      h('div', { class: 'dim', style: 'font-size:13px;margin-top:10px' }, 'Hold ◀ ▶ to steer and GAS to go. Punch or kick riders right next to you. Off the road is slow, and hitting trees or cars crashes you.'));
+    return;
+  }
   if (v.mode === 'quiz') {
     const q = v.quiz, reveal = v.phase === 'reveal', picked = q.your_choice;
     if (!reveal && picked == null && newTurn) buzz(60);
@@ -231,6 +250,45 @@ function render() {
       h('div', { style: 'font-size:20px;font-weight:700;margin-top:6px' }, q.question)), opts, h('div', { class: 'card center' }, status), h('div', { class: 'scorebox' }, scores(v)));
   }
 }
+function raceHud(hd) {
+  if (!hd) return h('div', { class: 'dim' }, 'Get ready…');
+  const status = { countdown: 'Get ready…', crashed: '💥 Crashed! Back on in a moment', finished: '🏁 Finished!' }[hd.status];
+  return h('div', {}, h('div', { class: 'racehud' }, h('span', { class: 'pos' }, ordinal(hd.pos)), h('span', { class: 'meta' }, `of ${hd.of} · lap ${hd.lap}/${hd.laps}`),
+    h('span', { class: 'spd' }, hd.speed + ' km/h')),
+    h('div', { class: 'hbar' }, h('div', { style: `width:${hd.health}%;background:${hd.health > 50 ? '#66bb6a' : hd.health > 25 ? '#ffca28' : '#ef5350'}` })),
+    status ? h('div', { style: 'margin-top:8px;font-weight:700' }, status) : null);
+}
+function ordinal(n) { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
+
+// controls are sent only when a button changes, not every frame
+const ctl = { l: false, r: false, gas: false, brake: false };
+let autoGas = store.get('tvgame-autogas') === '1';
+function sendCtl() { post('race/input', { l: ctl.l, r: ctl.r, gas: ctl.gas || (autoGas && !ctl.brake), brake: ctl.brake }); }
+function holdButton(label, cls, keyName) {
+  const b = h('button', { class: cls }, label);
+  const on = e => { e.preventDefault(); b.setPointerCapture && b.setPointerCapture(e.pointerId); if (!ctl[keyName]) { ctl[keyName] = true; b.classList.add('held'); buzz(8); sendCtl(); } };
+  const off = () => { if (ctl[keyName]) { ctl[keyName] = false; b.classList.remove('held'); sendCtl(); } };
+  b.onpointerdown = on; b.onpointerup = off; b.onpointercancel = off; b.onlostpointercapture = off; b.oncontextmenu = e => e.preventDefault();
+  return b;
+}
+function tapButton(label, action) {
+  const b = h('button', { class: 'hit' }, label);
+  b.onpointerdown = e => { e.preventDefault(); b.classList.add('held'); buzz(25); post('race/action', { action }); };
+  b.onpointerup = b.onpointercancel = () => b.classList.remove('held');
+  b.oncontextmenu = e => e.preventDefault();
+  return b;
+}
+function raceController() {
+  Object.keys(ctl).forEach(k => ctl[k] = false);
+  const auto = h('input', { type: 'checkbox' }); auto.checked = autoGas;
+  auto.onchange = () => { autoGas = auto.checked; store.set('tvgame-autogas', autoGas ? '1' : '0'); sendCtl(); };
+  setTimeout(sendCtl, 0);
+  return h('div', {}, h('div', { class: 'pad' }, tapButton('👊 PUNCH', 'punch'), tapButton('🦵 KICK', 'kick'),
+      holdButton('◀', '', 'l'), holdButton('▶', '', 'r'), holdButton('BRAKE', 'brake', 'brake'), holdButton('GAS', 'gas', 'gas')),
+    h('label', { class: 'auto' }, auto, 'Auto-accelerate (hold BRAKE to slow down)'));
+}
+document.addEventListener('contextmenu', e => { if (view && view.mode === 'race') e.preventDefault(); });
+
 addEventListener('resize', () => pad && pad.size());
 connect();
 </script>

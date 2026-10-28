@@ -166,6 +166,7 @@
   <div class="gamepick">
     <button class="k" data-game="draw">✏️ Draw &amp; Guess<small>One draws, the rest guess · 2+ players</small></button>
     <button class="k" data-game="quiz">⚡ Quiz Buzzer<small>Fastest right answer wins · 1+ players</small></button>
+    <button class="k" data-game="race">🏍️ Highway Brawl<small>Bike racing with punches · 1–4 players</small></button>
   </div>
   <div id="drawSettings">
     <div class="setting">Turns each <select id="drawRounds"><option>1</option><option selected>2</option><option>3</option></select></div>
@@ -178,6 +179,11 @@
     <div class="setting">Seconds per question <select id="quizSeconds"><option>10</option><option selected>20</option><option>30</option></select></div>
     <h2>Your own questions (optional)</h2>
     <textarea id="questions" placeholder="Question | right answer | wrong | wrong | wrong&#10;Who is the tallest in our family? | Papa | Mummy | Riya | Dadi"></textarea>
+  </div>
+  <div id="raceSettings" style="display:none">
+    <div class="setting">Laps <select id="raceLaps"><option>1</option><option selected>2</option><option>3</option></select></div>
+    <div class="setting">Computer rivals <select id="raceAi"><option>0</option><option>3</option><option selected>5</option><option>7</option></select></div>
+    <p class="hint">Up to 4 riders share the TV in split screen. Each phone is a controller.</p>
   </div>
   <div class="row"><button class="k" id="gOpen" style="background:var(--accent)">Open on TV</button></div>
 
@@ -383,16 +389,18 @@ document.querySelectorAll('[data-game]').forEach(b => b.onclick = () => {
   document.querySelectorAll('[data-game]').forEach(x => x.classList.toggle('on', x === b));
   $('#drawSettings').style.display = gMode === 'draw' ? '' : 'none';
   $('#quizSettings').style.display = gMode === 'quiz' ? '' : 'none';
+  $('#raceSettings').style.display = gMode === 'race' ? '' : 'none';
 });
 document.querySelector('[data-game=draw]').classList.add('on');
 $('#gOpen').onclick = () => api('/api/game/open', { mode: gMode,
-  settings: { draw_rounds: +$('#drawRounds').value, draw_seconds: +$('#drawSeconds').value, quiz_count: +$('#quizCount').value, quiz_seconds: +$('#quizSeconds').value },
+  settings: { draw_rounds: +$('#drawRounds').value, draw_seconds: +$('#drawSeconds').value, quiz_count: +$('#quizCount').value, quiz_seconds: +$('#quizSeconds').value,
+              race_laps: +$('#raceLaps').value, race_ai: +$('#raceAi').value },
   words: $('#words').value, questions: $('#questions').value }).then(j => { if (j.ok) { status(j.out); hostRefresh(); } });
 $('#gStart').onclick = () => api('/api/game/start', {}).then(j => j.ok && status('Game started!'));
 $('#gSkip').onclick = () => api('/api/game/skip', {});
 $('#gShow').onclick = () => api('/api/game/show', {}).then(j => j.ok && status('Showing the game on the TV'));
 $('#gEnd').onclick = () => { if (confirm('End the game and remove all players?')) api('/api/game/end', {}).then(hostRefresh); };
-const PHASES = { lobby: 'Lobby: waiting for players', turn: 'Drawing…', question: 'Question on screen', reveal: 'Showing the answer', over: 'Game over: Start plays again' };
+const PHASES = { race: 'Race on!', lobby: 'Lobby: waiting for players', turn: 'Drawing…', question: 'Question on screen', reveal: 'Showing the answer', over: 'Game over: Start plays again' };
 let gFormLoaded = false;
 async function hostRefresh() {
   let v; try { v = await (await fetch('/api/game/host')).json(); } catch (e) { return; }
@@ -401,10 +409,11 @@ async function hostRefresh() {
   $('#gLive').style.display = live ? '' : 'none';
   if (!live) return;
   if (v.join_url && $('#gUrl').textContent !== v.join_url) { $('#gUrl').textContent = v.join_url; $('#gQr').src = '/api/game/qr.svg'; }
-  $('#gState').textContent = (v.mode === 'draw' ? 'Draw & Guess · ' : 'Quiz · ') + (PHASES[v.phase] || v.phase) + (v.seconds != null && v.phase !== 'reveal' ? ` · ${v.seconds}s` : '');
+  $('#gState').textContent = ({ draw: 'Draw & Guess · ', quiz: 'Quiz · ', race: 'Highway Brawl · ' }[v.mode] || '') + (PHASES[v.phase] || v.phase) + (v.seconds != null && v.phase !== 'reveal' ? ` · ${v.seconds}s` : '');
   $('#gStart').textContent = v.phase === 'over' ? 'Play again' : 'Start';
   $('#gStart').disabled = !(v.phase === 'lobby' || v.phase === 'over');
-  $('#gSkip').disabled = !['turn', 'question', 'reveal'].includes(v.phase);
+  $('#gSkip').disabled = !['turn', 'question', 'reveal', 'race'].includes(v.phase);
+  $('#gSkip').textContent = v.phase === 'race' ? 'End race' : 'Skip';
   const box = $('#gPlayers'); box.replaceChildren();
   if (!v.players.length) box.append(Object.assign(document.createElement('div'), { textContent: 'No one has joined yet.', style: 'color:var(--dim)' }));
   v.players.forEach(p => {

@@ -130,6 +130,11 @@ Two party games, with everyone's phone as the controller. Players need nothing i
   appear as hints halfway through. Near-miss guesses ("so close!") are only shown to the person who typed them.
 - **Quiz Buzzer** (1+ players): a question with four answers on the TV; everyone taps an answer on their phone. Right
   answers score 500–1000 depending on speed, plus 100 for the fastest.
+- **Highway Brawl** (1–4 players): an original retro motorbike racer in the style of the 90s classics. Race computer
+  rivals along a winding country road and punch or kick riders next to you; health runs out and you're knocked off
+  for a few seconds. Two or more players race in split screen on the TV. Phones show the controls (steer, gas, brake,
+  punch, kick, optional auto-accelerate) plus your place, lap, speed and health. Points go by finishing place, plus 10
+  per knockout. Choose laps and how many computer rivals in the Games tab; **End race** stops early.
 - **Your own content:** add family words, or questions as `Question | right answer | wrong | wrong | wrong`, one
   per line. They're used first, topped up from the built-in lists in `remote/games_data.py`.
 - Other phones can only join and play. They can't press TV keys, open apps or control the game.

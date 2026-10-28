@@ -299,7 +299,9 @@ SKETCH = Sketch()
 GAMES = Games()
 # what phones other than this one may POST: joining and playing, never TV control
 PLAYER_POSTS = {"/api/game/join", "/api/game/leave", "/api/game/guess", "/api/game/answer",
-                "/api/game/draw", "/api/game/draw/edit"}
+                "/api/game/draw", "/api/game/draw/edit", "/api/game/race/input", "/api/game/race/action"}
+# what only the TV (or this phone) may POST: the race engine runs on the TV and reports back
+TV_POSTS = {"/api/game/race/hud", "/api/game/race/result"}
 
 
 def join_url():
@@ -361,6 +363,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.page("game_tv.html" if query.get("view") == ["game"] else "board.html")
         if path == "/play":
             return self.page("play.html")
+        if path == "/race.js":
+            with open(os.path.join(HERE, "web", "race.js"), "rb") as f:
+                return self.send(200, f.read(), "text/javascript")
         if path == "/api/game/events":
             return self.game_events((query.get("t") or [None])[0])
         if path == "/api/game/qr.svg":
@@ -397,7 +402,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send(404, {"error": "not found"})
 
     def do_POST(self):
-        if not self.is_local() and urlparse(self.path).path not in PLAYER_POSTS:
+        path = urlparse(self.path).path
+        from_tv = self.client_address[0] == SERIAL.rsplit(":", 1)[0]
+        if not self.is_local() and path not in PLAYER_POSTS and not (from_tv and path in TV_POSTS):
             return self.send(403, {"error": "only the phone running the server can control the TV"})
         try:
             n = int(self.headers.get("Content-Length") or 0)
@@ -499,6 +506,14 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("color must be #rrggbb")
             return GAMES.draw(t, str(b["id"])[:40], color, max(1, min(80, int(b["width"]))),
                               check_points(b["points"]))
+        if action == "race/input":
+            return GAMES.race_input(t, b)
+        if action == "race/action":
+            return GAMES.race_action(t, b.get("action"))
+        if action == "race/hud":
+            return GAMES.race_hud(b.get("hud"))
+        if action == "race/result":
+            return GAMES.race_result(b.get("standings"))
         if action == "draw/edit":
             if b.get("action") not in ("undo", "clear", "skip"):
                 raise ValueError("bad action")

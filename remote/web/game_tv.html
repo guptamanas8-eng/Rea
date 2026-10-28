@@ -46,13 +46,18 @@
   .podium div { width:16vw; border-radius:2vh 2vh 0 0; text-align:center; padding-top:2vh; font-size:3.2vh; font-weight:800; }
   .mini { display:flex; align-items:center; gap:1vw; font-size:2.2vh; color:var(--dim); }
   .mini img { width:10vh; height:10vh; background:#fff; border-radius:1vh; padding:.5vh; }
+  #race { position:fixed; inset:0; width:100vw; height:100vh; background:#000; image-rendering:pixelated; }
+  .standings { font-size:2.6vh; display:grid; grid-template-columns:auto 1fr auto; gap:.6vh 1.2vw; }
 </style>
+<script src="/race.js"></script>
 </head>
 <body>
 <div id="app"><div class="big"><div class="label">Connecting to the game…</div></div></div>
 <script>
 const OPT_COLORS = ['#e53935', '#1e88e5', '#f9a825', '#43a047'];
-let view = null, strokes = [], cv = null, ctx = null, layoutKey = '';
+let view = null, strokes = [], cv = null, ctx = null, layoutKey = '', raceId = null;
+const TITLES = { draw: '✏️ Draw & Guess', quiz: '⚡ Quiz Buzzer', race: '🏍️ Highway Brawl' };
+function postJson(path, body) { return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {}); }
 
 function h(tag, attrs, ...kids) {
   const el = document.createElement(tag);
@@ -75,12 +80,23 @@ function miniJoin(v) {
 }
 function header(v, sub) {
   const t = v.seconds;
-  return h('header', {}, h('span', { class: 'title' }, v.mode === 'draw' ? '✏️ Draw & Guess' : '⚡ Quiz Buzzer'),
+  return h('header', {}, h('span', { class: 'title' }, TITLES[v.mode] || ''),
     h('span', { class: 'sub' }, sub || ''), t != null && v.phase !== 'reveal' ? h('span', { class: 'timer' + (t <= 5 ? ' low' : '') }, t) : null);
 }
 
 function render(v) {
   const app = document.getElementById('app');
+  // the race draws itself on its own canvas; views during the race only carry HUD data
+  if (v.mode === 'race' && v.phase === 'race' && v.race) {
+    if (raceId === v.race.id) return;
+    raceId = v.race.id;
+    const c = h('canvas', { id: 'race' });
+    app.replaceChildren(c);
+    Race.start({ canvas: c, seed: v.race.seed, laps: v.race.laps, ai: v.race.ai, racers: v.race.racers,
+      hud: hud => postJson('/api/game/race/hud', { hud }), result: standings => postJson('/api/game/race/result', { standings }) });
+    return;
+  }
+  if (raceId) { Race.stop(); raceId = null; }
   app.replaceChildren();  // the drawing canvas element is reused below, so strokes survive re-renders
 
   if (!v.mode || v.phase === 'idle') {
@@ -95,6 +111,16 @@ function render(v) {
         h('div', { class: 'join' }, h('div', {}, 'Scan with your phone camera, or open:'), h('div', { class: 'url' }, (v.join_url || '').replace('http://', '')),
           h('div', { style: 'color:var(--dim);margin-top:2vh' }, 'Same Wi-Fi as the TV. The host starts the game when everyone is in.'))),
         h('aside', {}, playersCard(v))));
+    return;
+  }
+  if (v.phase === 'over' && v.mode === 'race' && v.race && v.race.standings) {
+    const st = v.race.standings;
+    app.append(header(v, 'Race results'), h('main', {}, h('div', { class: 'center' }, h('div', { class: 'big', style: 'justify-content:flex-start' },
+      h('div', { class: 'value', style: 'font-size:7vh' }, '🏁 ' + (st[0] ? st[0].name : '') + ' wins!'),
+      h('div', { class: 'card standings' }, st.flatMap(r => [h('span', {}, r.pos + '.'),
+        h('span', { style: r.human ? 'font-weight:800' : 'color:var(--dim)' }, r.name + (r.ko ? `  (${r.ko} KO)` : '')),
+        h('span', { style: 'color:var(--dim)' }, r.time != null ? r.time.toFixed(1) + 's' : '—')])))),
+      h('aside', {}, playersCard(v), miniJoin(v))));
     return;
   }
   if (v.phase === 'over') {
@@ -155,6 +181,8 @@ function redraw() { if (!ctx) return; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0,
 
 function onEvent(ev) {
   if (ev.type === 'view') { view = ev.view; render(view); }
+  else if (ev.type === 'race_input') { if (raceId) Race.input(ev.id, ev); }
+  else if (ev.type === 'race_action') { if (raceId) Race.action(ev.id, ev.action); }
   else if (ev.type === 'strokes') { strokes = ev.strokes; redraw(); }
   else if (ev.type === 'points') {
     let s = strokes.find(x => x.id === ev.id);
