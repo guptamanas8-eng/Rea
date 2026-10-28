@@ -18,7 +18,10 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
+
+import qr
+from games import Games
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.environ.get("TVCTL_STATE", os.path.join(os.path.dirname(HERE), "state"))
@@ -293,6 +296,27 @@ class Sketch:
 
 
 SKETCH = Sketch()
+GAMES = Games()
+# what phones other than this one may POST: joining and playing, never TV control
+PLAYER_POSTS = {"/api/game/join", "/api/game/leave", "/api/game/guess", "/api/game/answer",
+                "/api/game/draw", "/api/game/draw/edit"}
+
+
+def join_url():
+    try:
+        return f"http://{local_ip()}:{PORT}/play"
+    except OSError:
+        return None
+
+
+def show_on_tv(view=None):
+    """Open the Sketch Board app on the TV at the board (or the game when view="game")."""
+    url = f"http://{local_ip()}:{PORT}/board" + (f"?view={view}" if view else "")
+    rc, out = shell(f"am start -n {BOARD_PKG}/.MainActivity --es url {shlex.quote(url)}")
+    if "does not exist" in out or "Error" in out:
+        return {"ok": False, "out": "Sketch Board isn't installed on the TV. Run: "
+                "bash tv.sh install-app guptamanas8-eng/Rea sketchboard"}
+    return {"ok": rc == 0, "out": f"Showing {url} on the TV"}
 
 
 def check_points(raw):
@@ -332,8 +356,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlparse(self.path).path
+        query = parse_qs(urlparse(self.path).query)
         if path == "/board":
-            return self.page("board.html")
+            return self.page("game_tv.html" if query.get("view") == ["game"] else "board.html")
+        if path == "/play":
+            return self.page("play.html")
+        if path == "/api/game/events":
+            return self.game_events((query.get("t") or [None])[0])
+        if path == "/api/game/qr.svg":
+            url = join_url()
+            if not url:
+                return self.send(503, {"error": "no network address"})
+            return self.send(200, qr.svg(url), "image/svg+xml")
         if path == "/api/sketch":
             return self.send(200, SKETCH.snapshot()[1])
         if path == "/api/sketch/events":
@@ -352,13 +386,18 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/current":
             pkg = current_app()
             return self.send(200, {"pkg": pkg, "name": app_name(pkg) if pkg else None})
+        if path == "/api/game/host":
+            v = GAMES.view(None, join_url())
+            v["words"] = "\n".join(GAMES.custom_words)
+            v["questions"] = "\n".join(" | ".join(q) for q in GAMES.custom_questions)
+            return self.send(200, v)
         if path == "/api/status":
             rc, out = adb("get-state")
             return self.send(200, {"tv": SERIAL, "online": rc == 0 and out == "device"})
         self.send(404, {"error": "not found"})
 
     def do_POST(self):
-        if not self.is_local():
+        if not self.is_local() and urlparse(self.path).path not in PLAYER_POSTS:
             return self.send(403, {"error": "only the phone running the server can control the TV"})
         try:
             n = int(self.headers.get("Content-Length") or 0)
@@ -366,6 +405,8 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("request too large")
             body = json.loads(self.rfile.read(n) or b"{}")
             result = self.route(urlparse(self.path).path, body)
+        except PermissionError as e:
+            return self.send(403, {"ok": False, "error": str(e)})
         except (ValueError, TypeError, KeyError, IndexError) as e:
             return self.send(400, {"ok": False, "error": str(e)})
         if result is None:
@@ -416,12 +457,9 @@ class Handler(BaseHTTPRequestHandler):
                             f"--es query {shlex.quote(q)}")
             return {"ok": rc == 0 and "Error" not in out, "out": out}
         if path == "/api/board/open":
-            url = f"http://{local_ip()}:{PORT}/board"
-            rc, out = shell(f"am start -n {BOARD_PKG}/.MainActivity --es url {shlex.quote(url)}")
-            if "does not exist" in out or "Error" in out:
-                return {"ok": False, "out": "Sketch Board isn't installed on the TV. Run: "
-                        "bash tv.sh install-app guptamanas8-eng/Rea sketchboard"}
-            return {"ok": rc == 0, "out": f"Showing {url} on the TV"}
+            return show_on_tv()
+        if path.startswith("/api/game/"):
+            return self.game_route(path[len("/api/game/"):], b)
         if path == "/api/sketch/points":
             sid = str(b["id"])[:40]
             color = str(b["color"])
@@ -443,6 +481,62 @@ class Handler(BaseHTTPRequestHandler):
             SKETCH.set_note(str(b.get("note", ""))[:120])
             return {"ok": True}
         return None
+
+    def game_route(self, action, b):
+        t = b.get("t")
+        if action == "join":
+            return {"ok": True, **GAMES.join(b.get("name", ""), b.get("token"))}
+        if action == "leave":
+            GAMES.leave(t)
+            return {"ok": True}
+        if action == "guess":
+            return GAMES.guess(t, b["text"])
+        if action == "answer":
+            return GAMES.answer(t, b["choice"])
+        if action == "draw":
+            color = str(b["color"])
+            if not COLOR_RE.match(color):
+                raise ValueError("color must be #rrggbb")
+            return GAMES.draw(t, str(b["id"])[:40], color, max(1, min(80, int(b["width"]))),
+                              check_points(b["points"]))
+        if action == "draw/edit":
+            if b.get("action") not in ("undo", "clear", "skip"):
+                raise ValueError("bad action")
+            return GAMES.draw_edit(t, b["action"])
+        # host only (other phones are stopped by PLAYER_POSTS in do_POST)
+        if action == "open":
+            GAMES.open(b["mode"], b.get("settings"), b.get("words"), b.get("questions"))
+            shown = show_on_tv("game")
+            return {"ok": True, "out": "Game open on the TV" if shown["ok"] else shown["out"]}
+        if action == "show":
+            return show_on_tv("game")
+        if action == "start":
+            GAMES.start()
+            return {"ok": True}
+        if action == "skip":
+            GAMES.skip()
+            return {"ok": True}
+        if action == "end":
+            GAMES.end()
+            return {"ok": True}
+        if action == "kick":
+            GAMES.kick(str(b["id"]))
+            return {"ok": True}
+        return None
+
+    def game_events(self, token):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
+        def write(ev):
+            self.wfile.write(b": keepalive\n\n" if ev is None else f"data: {json.dumps(ev)}\n\n".encode())
+            self.wfile.flush()
+        try:
+            GAMES.stream(token, write, join_url())
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
 
     def events(self):
         self.send_response(200)
@@ -480,6 +574,7 @@ def main():
           "  (TV not reachable right now; the remote reconnects when it's back)"))
     print(f"  remote and sketch pad: http://127.0.0.1:{PORT}  (open in this phone's browser)")
     print(f"  board for the TV:      http://{ip}:{PORT}/board")
+    print(f"  games: players join at http://{ip}:{PORT}/play")
     print("  Ctrl-C to stop")
     try:
         srv.serve_forever()

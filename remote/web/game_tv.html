@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TV Games</title>
+<style>
+  :root { --bg:#101318; --panel:#1b2029; --panel2:#252c38; --fg:#f1f4f8; --dim:#9aa5b5; --ok:#43a047; --accent:#4f8cff; --gold:#fdd835; }
+  html, body { margin:0; height:100%; overflow:hidden; background:var(--bg); color:var(--fg); font-family:system-ui, sans-serif; }
+  #app { position:fixed; inset:0; display:flex; flex-direction:column; padding:3vh 3vw; box-sizing:border-box; gap:2.5vh; }
+  header { display:flex; align-items:center; gap:2vw; font-size:3vh; }
+  header .title { font-weight:800; font-size:4.2vh; }
+  header .sub { color:var(--dim); flex:1; }
+  header .timer { font-variant-numeric:tabular-nums; font-weight:800; font-size:5vh; min-width:8vw; text-align:right; }
+  header .timer.low { color:#ff6b6b; }
+  main { flex:1; display:flex; gap:2.5vw; min-height:0; }
+  .center { flex:1; display:flex; flex-direction:column; min-width:0; gap:2vh; }
+  aside { width:24vw; display:flex; flex-direction:column; gap:2vh; min-height:0; }
+  .card { background:var(--panel); border-radius:2vh; padding:2vh 1.5vw; }
+  .players { display:flex; flex-direction:column; gap:1vh; }
+  .pl { display:flex; align-items:center; gap:1vw; font-size:2.8vh; }
+  .pl .dot { width:2.2vh; height:2.2vh; border-radius:50%; flex:none; }
+  .pl .name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pl .score { font-variant-numeric:tabular-nums; color:var(--dim); }
+  .pl .tag { font-size:2.2vh; color:var(--ok); font-weight:700; }
+  .pl.off { opacity:.45; }
+  .feed { flex:1; overflow:hidden; display:flex; flex-direction:column; justify-content:flex-end; gap:.8vh; font-size:2.5vh; }
+  .feed .correct { color:#7fe08a; font-weight:700; } .feed .reveal, .feed .win { color:var(--gold); font-weight:700; }
+  .feed .guess, .feed .join, .feed .info { color:var(--dim); }
+  canvas { width:100%; flex:1; min-height:0; border-radius:2vh; background:#fff; display:block; }
+  .hint { text-align:center; font-size:6vh; font-weight:800; letter-spacing:.5vw; font-family:ui-monospace, monospace; }
+  .lobby { flex:1; display:flex; align-items:center; justify-content:center; gap:5vw; }
+  .qr { background:#fff; border-radius:2vh; padding:1.5vh; width:42vh; height:42vh; }
+  .qr img { width:100%; height:100%; display:block; }
+  .join { font-size:3.2vh; line-height:1.5; max-width:40vw; }
+  .join .url { font-size:4vh; font-weight:800; color:var(--accent); word-break:break-all; }
+  .question { font-size:5.5vh; font-weight:800; text-align:center; padding:2vh 2vw; }
+  .options { display:grid; grid-template-columns:1fr 1fr; gap:2vh 1.5vw; flex:1; }
+  .opt { display:flex; align-items:center; gap:1.5vw; border-radius:2vh; padding:2vh 2vw; font-size:4.2vh; font-weight:700; color:#fff; }
+  .opt .letter { font-size:3vh; background:rgba(0,0,0,.25); border-radius:1vh; padding:.5vh 1.2vw; }
+  .opt.dim { opacity:.25; } .opt.right { outline:.8vh solid #fff; }
+  .big { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2vh; text-align:center; }
+  .big .label { font-size:3.5vh; color:var(--dim); }
+  .big .value { font-size:10vh; font-weight:900; }
+  .podium { display:flex; align-items:flex-end; justify-content:center; gap:2vw; margin-top:3vh; }
+  .podium div { width:16vw; border-radius:2vh 2vh 0 0; text-align:center; padding-top:2vh; font-size:3.2vh; font-weight:800; }
+  .mini { display:flex; align-items:center; gap:1vw; font-size:2.2vh; color:var(--dim); }
+  .mini img { width:10vh; height:10vh; background:#fff; border-radius:1vh; padding:.5vh; }
+</style>
+</head>
+<body>
+<div id="app"><div class="big"><div class="label">Connecting to the game…</div></div></div>
+<script>
+const OPT_COLORS = ['#e53935', '#1e88e5', '#f9a825', '#43a047'];
+let view = null, strokes = [], cv = null, ctx = null, layoutKey = '';
+
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === 'style') el.style.cssText = v; else if (k === 'class') el.className = v; else el.setAttribute(k, v);
+  }
+  for (const k of kids.flat()) if (k != null) el.append(k.nodeType ? k : String(k));
+  return el;
+}
+
+function playersCard(v, extra) {
+  return h('div', { class: 'card players' }, v.players.length ? v.players.map(p =>
+    h('div', { class: 'pl' + (p.online ? '' : ' off') }, h('span', { class: 'dot', style: 'background:' + p.color }),
+      h('span', { class: 'name' }, p.name), extra ? extra(p) : null, h('span', { class: 'score' }, p.score))) :
+    h('div', { class: 'pl' }, h('span', { class: 'name', style: 'color:var(--dim)' }, 'No players yet')));
+}
+function feedCard(v) { return h('div', { class: 'card feed' }, v.feed.map(f => h('div', { class: f.kind }, f.text))); }
+function miniJoin(v) {
+  return v.join_url ? h('div', { class: 'mini' }, h('img', { src: '/api/game/qr.svg' }), h('div', {}, 'Join: ', h('br'), v.join_url.replace('http://', ''))) : null;
+}
+function header(v, sub) {
+  const t = v.seconds;
+  return h('header', {}, h('span', { class: 'title' }, v.mode === 'draw' ? '✏️ Draw & Guess' : '⚡ Quiz Buzzer'),
+    h('span', { class: 'sub' }, sub || ''), t != null && v.phase !== 'reveal' ? h('span', { class: 'timer' + (t <= 5 ? ' low' : '') }, t) : null);
+}
+
+function render(v) {
+  const app = document.getElementById('app');
+  app.replaceChildren();  // the drawing canvas element is reused below, so strokes survive re-renders
+
+  if (!v.mode || v.phase === 'idle') {
+    app.append(h('div', { class: 'big' }, h('div', { class: 'value', style: 'font-size:7vh' }, 'No game running'),
+      h('div', { class: 'label' }, 'Pick a game on the phone running the remote: Games tab.')));
+    return;
+  }
+  if (v.phase === 'lobby') {
+    app.append(header(v, 'Waiting for players…'),
+      h('main', {}, h('div', { class: 'lobby' },
+        v.join_url ? h('div', { class: 'qr' }, h('img', { src: '/api/game/qr.svg' })) : null,
+        h('div', { class: 'join' }, h('div', {}, 'Scan with your phone camera, or open:'), h('div', { class: 'url' }, (v.join_url || '').replace('http://', '')),
+          h('div', { style: 'color:var(--dim);margin-top:2vh' }, 'Same Wi-Fi as the TV. The host starts the game when everyone is in.'))),
+        h('aside', {}, playersCard(v))));
+    return;
+  }
+  if (v.phase === 'over') {
+    const top = v.players.slice(0, 3), heights = ['30vh', '22vh', '16vh'], order = [1, 0, 2];
+    app.append(header(v, 'Final scores'),
+      h('main', {}, h('div', { class: 'center' }, h('div', { class: 'big' },
+        h('div', { class: 'value' }, '🏆 ' + (top[0] ? top[0].name : '')),
+        h('div', { class: 'podium' }, order.filter(i => top[i]).map(i => h('div', { style: `height:${heights[i]};background:${top[i].color}` },
+          ['🥇', '🥈', '🥉'][i], h('br'), top[i].name, h('br'), top[i].score))))),
+        h('aside', {}, playersCard(v), miniJoin(v))));
+    return;
+  }
+  if (v.mode === 'draw') {
+    const d = v.draw, reveal = v.phase === 'reveal';
+    const sub = reveal ? `Turn ${d.turn} of ${d.turns}` : `${d.drawer} is drawing · turn ${d.turn} of ${d.turns}`;
+    if (!cv || layoutKey !== 'draw') { cv = h('canvas'); ctx = cv.getContext('2d'); }
+    const hint = h('div', { class: 'hint', style: reveal ? 'color:var(--gold)' : '' }, reveal ? 'The word was: ' + (d.word || '').toUpperCase() : d.hint);
+    app.append(header(v, sub), h('main', {}, h('div', { class: 'center' }, hint, cv),
+      h('aside', {}, playersCard(v, p => p.id === d.drawer_id ? h('span', { class: 'tag' }, '✏️') :
+        (d.points[p.id] ? h('span', { class: 'tag' }, '+' + d.points[p.id]) : null)), feedCard(v), miniJoin(v))));
+    layoutKey = 'draw';
+    requestAnimationFrame(sizeCanvas);
+    return;
+  }
+  if (v.mode === 'quiz') {
+    const q = v.quiz, reveal = v.phase === 'reveal';
+    layoutKey = 'quiz';
+    app.append(header(v, `Question ${q.index} of ${q.total}` + (reveal ? '' : ` · ${q.answered}/${v.players.length} answered`)),
+      h('main', {}, h('div', { class: 'center' }, h('div', { class: 'question' }, q.question),
+        h('div', { class: 'options' }, q.options.map((o, i) =>
+          h('div', { class: 'opt' + (reveal ? (i === q.answer ? ' right' : ' dim') : ''), style: 'background:' + OPT_COLORS[i] },
+            h('span', { class: 'letter' }, 'ABCD'[i]), o))),
+        reveal ? h('div', { class: 'hint', style: 'font-size:3.5vh;letter-spacing:0' },
+          q.fastest ? `⚡ Fastest: ${q.fastest}` : 'Nobody got it this time!') : null),
+        h('aside', {}, playersCard(v, p => reveal ? (q.points[p.id] ? h('span', { class: 'tag' }, '+' + q.points[p.id]) : h('span', { class: 'tag', style: 'color:#ff6b6b' }, '✗'))
+          : (q.answered_ids.includes(p.id) ? h('span', { class: 'tag' }, '✓') : null)), miniJoin(v))));
+  }
+}
+
+function sizeCanvas() {
+  if (!cv || !cv.isConnected) return;
+  const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1;
+  // drawings are 16:9 on the phone; keep that shape here
+  const w = Math.min(r.width, r.height * 16 / 9), hgt = w * 9 / 16;
+  cv.style.width = w + 'px'; cv.style.height = hgt + 'px'; cv.style.flex = 'none'; cv.style.margin = '0 auto';
+  if (cv.width !== Math.round(w * d)) { cv.width = Math.round(w * d); cv.height = Math.round(hgt * d); }
+  redraw();
+}
+function seg(s, from) {
+  const p = s.points, sc = cv.height / 1080;
+  ctx.strokeStyle = s.color; ctx.fillStyle = s.color; ctx.lineWidth = s.width * sc; ctx.lineCap = ctx.lineJoin = 'round';
+  if (p.length === 1) { ctx.beginPath(); ctx.arc(p[0][0] * cv.width, p[0][1] * cv.height, s.width * sc / 2, 0, 7); ctx.fill(); return; }
+  ctx.beginPath(); const a = Math.max(0, from - 1); ctx.moveTo(p[a][0] * cv.width, p[a][1] * cv.height);
+  for (let i = a + 1; i < p.length; i++) ctx.lineTo(p[i][0] * cv.width, p[i][1] * cv.height);
+  ctx.stroke();
+}
+function redraw() { if (!ctx) return; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height); strokes.forEach(s => seg(s, 0)); }
+
+function onEvent(ev) {
+  if (ev.type === 'view') { view = ev.view; render(view); }
+  else if (ev.type === 'strokes') { strokes = ev.strokes; redraw(); }
+  else if (ev.type === 'points') {
+    let s = strokes.find(x => x.id === ev.id);
+    if (!s) { s = { id: ev.id, color: ev.color, width: ev.width, points: [] }; strokes.push(s); }
+    const from = s.points.length; s.points.push(...ev.points); if (ctx) seg(s, from);
+  }
+}
+const es = new EventSource('/api/game/events');
+es.onmessage = m => onEvent(JSON.parse(m.data));
+es.onerror = () => { if (!view) document.querySelector('#app .label').textContent = 'Phone not reachable, retrying…'; };
+addEventListener('resize', () => { if (view) render(view); });
+</script>
+</body>
+</html>

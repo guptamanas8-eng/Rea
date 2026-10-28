@@ -115,6 +115,25 @@ Sketch Board (`sketchboard/`) is built from this repo by GitHub Actions and publ
 `install-app` installs it the same way as any other app. It is signed with `sketchboard/debug.keystore`, a deliberately
 public key whose only job is letting new builds install over old ones. Uninstall: `adb uninstall com.guptamanas8.sketchboard`.
 
+## 6. Family games on the TV
+
+Two party games, with everyone's phone as the controller. Players need nothing installed, only the same Wi-Fi.
+
+1. On the phone running `bash tv.sh remote`, open the **Games** tab, pick **Draw & Guess** or **Quiz Buzzer**, then
+   **Open on TV**.
+2. Everyone scans the QR code on the TV (or types the address under it) and enters a name. To play on the host phone
+   too, tap **Play on this phone too**.
+3. Tap **Start**. **Skip** moves on, **Play again** restarts with the same players, **End** closes the game.
+
+- **Draw & Guess** (2+ players): each player takes turns drawing a secret word on their phone; it appears on the TV
+  while the others type guesses. Faster guesses score more, the drawer scores for each correct guess, and letters
+  appear as hints halfway through. Near-miss guesses ("so close!") are only shown to the person who typed them.
+- **Quiz Buzzer** (1+ players): a question with four answers on the TV; everyone taps an answer on their phone. Right
+  answers score 500–1000 depending on speed, plus 100 for the fastest.
+- **Your own content:** add family words, or questions as `Question | right answer | wrong | wrong | wrong`, one
+  per line. They're used first, topped up from the built-in lists in `remote/games_data.py`.
+- Other phones can only join and play. They can't press TV keys, open apps or control the game.
+
 ## Cheat sheet
 
 | Command | Does |
