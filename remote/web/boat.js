@@ -41,14 +41,17 @@
   function banks(y) { const c = course.cx(y), hw = course.width(y) / 2; return [c - hw, c + hw]; }
 
   // ---------------------------------------------------------------- boat
-  function makeBoat(crewIn) {
-    crew = crewIn;
+  const BOT_NAMES = ['Pip', 'Bubbles', 'Gus'], BOT_COLORS = ['#90a4ae', '#a1887f', '#9575cd'];
+  function makeBoat(crewIn, bots) {
+    // computer crewmates fill seats so a solo player still gets to toot "together"
+    crew = crewIn.concat(Array.from({ length: Math.max(0, Math.min(bots || 0, 4 - crewIn.length)) },
+      (_, i) => ({ id: 'bot' + i, name: BOT_NAMES[i] + ' 🤖', color: BOT_COLORS[i], bot: true })));
     // seat positions in boat space (x across, y along, + = toward the stern)
     const layouts = { 1: [-22, 22], 2: [-22, 22], 3: [-26, 0, 26], 4: [-30, -10, 10, 30] };
     const n = crew.length === 1 ? 2 : crew.length;
     seats = layouts[n].map((x, i) => {
       const owner = crew.length === 1 ? crew[0] : crew[i];
-      return { x, y: n === 4 && (i === 1 || i === 2) ? 6 : 26, owner, gas: 1, puff: 0, color: owner.color,
+      return { x, y: n === 4 && (i === 1 || i === 2) ? 6 : 26, owner, gas: 1, puff: 0, color: owner.color, botT: 1 + i * 0.3,
         label: crew.length === 1 ? (i === 0 ? 'L' : 'R') : owner.name };
     });
     boat = { x: course.cx(-80), y: -80, a: 0, vx: 0, vy: 0, w: 0 };
@@ -147,6 +150,7 @@
       }
     }
     for (const s of seats) { s.gas = Math.min(1, s.gas + GAS_REGEN * dt); s.puff = Math.max(0, s.puff - dt); }
+    if (state === 'play') seats.forEach((s, i) => { if (s.owner.bot && (s.botT -= dt) <= 0) botThink(s, i); });
     for (const p of puffs) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt + FLOW * dt; p.vx *= 0.96; p.vy *= 0.96; }
     puffs = puffs.filter(p => p.t < p.life);
     for (const t of texts) t.t += dt;
@@ -162,6 +166,23 @@
       endTimer = setTimeout(() => hooks.result && hooks.result({ finished: false, time: null, stars, total: items.filter(i => i.kind === 'star').length }), 3000);
     }
     if ((hudT -= dt) <= 0) { hudT = 0.4; sendHud(); }
+  }
+
+  // a computer crewmate looks up the river and toots from its seat when that helps, with a little
+  // randomness so it feels like a (decent) family member rather than an autopilot
+  function botThink(s, i) {
+    s.botT = rand(0.7, 1.3);
+    const ty = boat.y - 260, want = Math.atan2(course.cx(ty) - boat.x, boat.y - ty);
+    let e = want - boat.a;
+    while (e > Math.PI) e -= 2 * Math.PI; while (e < -Math.PI) e += 2 * Math.PI;
+    e -= boat.w * 0.4;                                   // allow for the spin already happening
+    const side = Math.sign(s.x);                         // -1 left seat (turns right), +1 right seat, 0 middle
+    let go;
+    if (e > 0.14) go = side < 0;
+    else if (e < -0.14) go = side > 0;
+    else go = s.gas > 0.3;
+    if (rng() < 0.12) go = !go;                          // nobody's perfect
+    if (go) toot(i, rand(0.4, 0.85));
   }
 
   // ------------------------------------------------------------- drawing
@@ -281,7 +302,7 @@
       this.stop();
       canvas = cfg.canvas; canvas.width = W; canvas.height = H; ctx = canvas.getContext('2d');
       hooks = cfg; rng = mulberry(cfg.seed || 1);
-      buildCourse(cfg.length || 9000); makeBoat(cfg.crew);
+      buildCourse(cfg.length || 9000); makeBoat(cfg.crew, cfg.bots);
       puffs = []; texts = []; stars = 0; time = 0; finishTime = null; countdown = 3.99; state = 'countdown';
       camY = boat.y - H * 0.18; acc = 0; last = performance.now(); hudT = 0;
       raf = requestAnimationFrame(frame);
@@ -291,6 +312,13 @@
       const mine = seats.map((s, i) => s.owner.id === id ? i : -1).filter(i => i >= 0);
       const i = mine.includes(seat) ? seat : mine[0];
       if (i != null) toot(i, power);
+    },
+    // TV remote for the first player: 'left' / 'right' toot their outermost seats, 'all' toots every seat they have
+    remote(kind, power) {
+      const id = crew.find(c => !c.bot).id, mine = seats.map((s, i) => s.owner.id === id ? i : -1).filter(i => i >= 0);
+      if (!mine.length) return;
+      const list = kind === 'left' ? [mine[0]] : kind === 'right' ? [mine[mine.length - 1]] : mine;
+      list.forEach(i => toot(i, power));
     },
     unlockAudio() { try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch (e) {} },
     stop() { cancelAnimationFrame(raf); clearTimeout(endTimer); raf = 0; },

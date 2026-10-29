@@ -61,7 +61,7 @@ class Games:
         self.mode = None          # "draw" | "quiz"
         self.phase = "idle"       # idle | lobby | turn | question | reveal | over
         self.settings = {"draw_rounds": 2, "draw_seconds": 80, "quiz_count": 10, "quiz_seconds": 20,
-                         "race_laps": 2, "race_ai": 5, "boat_length": 2}
+                         "race_laps": 2, "race_ai": 5, "boat_length": 2, "boat_bots": 0}
         self.custom_words, self.custom_questions = [], []
         self.feed = []
         self.deadline = None
@@ -174,6 +174,7 @@ class Games:
             s["race_laps"] = max(1, min(3, s["race_laps"]))
             s["race_ai"] = max(0, min(7, s["race_ai"]))
             s["boat_length"] = max(1, min(3, s["boat_length"]))
+            s["boat_bots"] = max(0, min(3, s["boat_bots"]))
             if words is not None:
                 self.custom_words = parse_words(words)
             if questions is not None:
@@ -216,6 +217,7 @@ class Games:
                 order = sorted(self.players.items(), key=lambda kv: kv[1]["joined"])
                 self.boat = {"id": secrets.token_hex(4), "seed": random.randint(1, 2 ** 31 - 1),
                              "length": {1: 6000, 2: 9000, 3: 13000}[self.settings["boat_length"]],
+                             "bots": min(self.settings["boat_bots"], 4 - len(order)),
                              "crew": [{"id": p["id"], "name": p["name"], "color": p["color"]} for _, p in order],
                              "hud": {}, "result": None}
                 self.phase = "boat"
@@ -568,7 +570,7 @@ class Games:
                     v["race"]["racing"] = any(x["id"] == me["id"] for x in r["racers"])
             if self.mode == "boat" and self.phase in ("boat", "over") and getattr(self, "boat", None):
                 b = self.boat
-                v["boat"] = {"id": b["id"], "seed": b["seed"], "length": b["length"], "crew": b["crew"],
+                v["boat"] = {"id": b["id"], "seed": b["seed"], "length": b["length"], "crew": b["crew"], "bots": b["bots"],
                              "result": b["result"], "hud": b["hud"]}
                 if me:
                     v["boat"]["aboard"] = any(c["id"] == me["id"] for c in b["crew"])

@@ -103,7 +103,7 @@ function render(v) {
     boatId = v.boat.id;
     const c = h('canvas', { id: 'race' });
     app.replaceChildren(c);
-    Boat.start({ canvas: c, seed: v.boat.seed, length: v.boat.length, crew: v.boat.crew,
+    Boat.start({ canvas: c, seed: v.boat.seed, length: v.boat.length, crew: v.boat.crew, bots: v.boat.bots,
       hud: hud => postJson('/api/game/boat/hud', { hud }), result: result => postJson('/api/game/boat/result', { result }) });
     return;
   }
@@ -215,6 +215,23 @@ const es = new EventSource('/api/game/events');
 es.onmessage = m => onEvent(JSON.parse(m.data));
 es.onerror = () => { if (!view) document.querySelector('#app .label').textContent = 'Phone not reachable, retrying…'; };
 addEventListener('resize', () => { if (view) render(view); });
+
+// Toot Boat on the TV remote (first player): hold ◀ ▶ ▲ to charge, let go to toot
+const held = {};
+const REMOTE = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'all' };
+addEventListener('keydown', e => {
+  if (!boatId || !REMOTE[e.key]) return;
+  e.preventDefault();
+  Boat.unlockAudio();
+  if (!held[e.key]) held[e.key] = performance.now();
+});
+addEventListener('keyup', e => {
+  if (!boatId || !REMOTE[e.key] || !held[e.key]) return;
+  e.preventDefault();
+  const p = Math.max(0.25, Math.min(1, (performance.now() - held[e.key]) / 1000));
+  delete held[e.key];
+  Boat.remote(REMOTE[e.key], p);
+});
 </script>
 </body>
 </html>

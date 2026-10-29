@@ -235,7 +235,7 @@ function render() {
       app.replaceChildren(me, h('div', { class: 'card center' }, h('h1', {}, 'Boat trip in progress'), h('div', { class: 'dim' }, 'You joined after the start. Watch the TV, you\'re on the next trip!')));
       return;
     }
-    const solo = v.boat.crew.length === 1, idx = v.boat.crew.findIndex(c => c.id === v.you.id), n = v.boat.crew.length;
+    const n = v.boat.crew.length + (v.boat.bots || 0), solo = n === 1, idx = v.boat.crew.findIndex(c => c.id === v.you.id);
     const where = solo ? 'You have both seats: left toot turns right, right toot turns left.'
       : `Your seat: ${idx === 0 ? 'far left' : idx === n - 1 ? 'far right' : n === 3 ? 'middle' : idx === 1 ? 'left middle' : 'right middle'}. Tooting alone turns the boat ${idx < (n - 1) / 2 ? 'right' : idx > (n - 1) / 2 ? 'left' : 'nowhere, you push straight'}; toot together to go straight!`;
     app.replaceChildren(me, h('div', { class: 'card boathud-box' }, boatHud(v.boat.hud, v.you.id)),

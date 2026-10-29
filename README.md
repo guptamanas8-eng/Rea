@@ -140,6 +140,9 @@ Two party games, with everyone's phone as the controller. Players need nothing i
   bigger toot, grab beans to refill gas and stars for points, and dodge rocks, drifting logs and whirlpools. A solo
   player gets both seats (left and right buttons). The whole crew shares one score from speed and stars. Toot sounds
   play on the TV and on each phone. An original game inspired by co-op "steer it together" party games.
+  **Playing alone:** join on your own phone (you get LEFT and RIGHT toots), and/or add 1–3 **computer crewmates**
+  in the Games tab, who toot from their seats to help steer. The first player can also toot with the **TV remote**:
+  hold ◀, ▶ or ▲ (all your seats) to charge and let go to toot.
 - **Your own content:** add family words, or questions as `Question | right answer | wrong | wrong | wrong`, one
   per line. They're used first, topped up from the built-in lists in `remote/games_data.py`.
 - Other phones can only join and play. They can't press TV keys, open apps or control the game.

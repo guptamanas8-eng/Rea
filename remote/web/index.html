@@ -187,8 +187,10 @@
     <p class="hint">Up to 4 riders share the TV in split screen. Each phone is a controller.</p>
   </div>
   <div id="boatSettings" style="display:none">
+    <div class="setting">Computer crewmates <select id="boatBots"><option value="0" selected>None</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>
     <div class="setting">River length <select id="boatLength"><option value="1">Short</option><option value="2" selected>Medium</option><option value="3">Long</option></select></div>
-    <p class="hint">Everyone shares one boat. Each player toots from their seat: together goes straight, alone turns.</p>
+    <p class="hint">Everyone shares one boat. Each player toots from their seat: together goes straight, alone turns.
+      Playing alone? Join on this phone, or add computer crewmates and toot with the TV remote: hold ◀ ▶ ▲ and let go.</p>
   </div>
   <div class="row"><button class="k" id="gOpen" style="background:var(--accent)">Open on TV</button></div>
 
@@ -400,7 +402,7 @@ document.querySelectorAll('[data-game]').forEach(b => b.onclick = () => {
 document.querySelector('[data-game=draw]').classList.add('on');
 $('#gOpen').onclick = () => api('/api/game/open', { mode: gMode,
   settings: { draw_rounds: +$('#drawRounds').value, draw_seconds: +$('#drawSeconds').value, quiz_count: +$('#quizCount').value, quiz_seconds: +$('#quizSeconds').value,
-              race_laps: +$('#raceLaps').value, race_ai: +$('#raceAi').value, boat_length: +$('#boatLength').value },
+              race_laps: +$('#raceLaps').value, race_ai: +$('#raceAi').value, boat_length: +$('#boatLength').value, boat_bots: +$('#boatBots').value },
   words: $('#words').value, questions: $('#questions').value }).then(j => { if (j.ok) { status(j.out); hostRefresh(); } });
 $('#gStart').onclick = () => api('/api/game/start', {}).then(j => j.ok && status('Game started!'));
 $('#gSkip').onclick = () => api('/api/game/skip', {});
