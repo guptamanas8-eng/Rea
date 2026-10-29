@@ -8,7 +8,9 @@
   const TOOT = 230, FLOW = 22, GAS_REGEN = 0.28;
 
   let canvas, ctx, rng, hooks, raf = 0, last = 0, acc = 0, hudT = 0, endTimer = null;
-  let boat, seats, crew, course, items, puffs, texts, state, countdown, time, stars, finishTime, camY, audio;
+  let boat, seats, crew, course, items, puffs, texts, state, countdown, time, stars, finishTime, camY, audio, r3d = null;
+  // what the 3D view reads each frame
+  const view3d = { get boat() { return boat; }, get seats() { return seats; }, get items() { return items; }, get puffs() { return puffs; }, get course() { return course; } };
 
   // ------------------------------------------------------------- helpers
   function mulberry(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
@@ -84,6 +86,7 @@
 
   // --------------------------------------------------------------- audio
   function playToot(p, voice) {
+    if (window.Toot) { window.Toot.play(p, voice); return; }   // the realistic synth (toot.js)
     try {
       audio = audio || new (window.AudioContext || window.webkitAudioContext)();
       if (audio.state === 'suspended') audio.resume();
@@ -187,6 +190,16 @@
 
   // ------------------------------------------------------------- drawing
   function draw() {
+    if (r3d) {
+      r3d.render(performance.now() / 1000);
+      ctx.clearRect(0, 0, W, H);
+      for (const t of texts) {
+        const p = r3d.project(t.x, t.y, 70 + t.t * 50);
+        if (p) { ctx.globalAlpha = 1 - t.t / 1.3; label(t.text, p[0], p[1], 24, t.color, 'center'); ctx.globalAlpha = 1; }
+      }
+      drawHud();
+      return;
+    }
     const top = camY - H * 0.62, bottom = top + H;
     ctx.fillStyle = '#5aa845'; ctx.fillRect(0, 0, W, H);
     // grass speckles that scroll with the world
@@ -305,6 +318,11 @@
       buildCourse(cfg.length || 9000); makeBoat(cfg.crew, cfg.bots);
       puffs = []; texts = []; stars = 0; time = 0; finishTime = null; countdown = 3.99; state = 'countdown';
       camY = boat.y - H * 0.18; acc = 0; last = performance.now(); hudT = 0;
+      r3d = null;
+      if (cfg.threeD !== false && window.Boat3D && window.Boat3D.supported()) {
+        try { window.Boat3D.init(canvas.parentNode, canvas, view3d); r3d = window.Boat3D; canvas.style.background = 'transparent'; }
+        catch (e) { r3d = null; }                         // no 3D on this TV: the flat view still works
+      }
       raf = requestAnimationFrame(frame);
     },
     // a toot from a player: seat index (or -1 for "my seat"), power 0..1 from how long they charged
@@ -320,8 +338,9 @@
       const list = kind === 'left' ? [mine[0]] : kind === 'right' ? [mine[mine.length - 1]] : mine;
       list.forEach(i => toot(i, power));
     },
-    unlockAudio() { try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch (e) {} },
-    stop() { cancelAnimationFrame(raf); clearTimeout(endTimer); raf = 0; },
+    unlockAudio() { if (window.Toot) window.Toot.unlock(); try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch (e) {} },
+    stop() { cancelAnimationFrame(raf); clearTimeout(endTimer); raf = 0; if (r3d) { r3d.dispose(); r3d = null; } },
+    get is3d() { return !!r3d; },
     get running() { return !!raf; },
     _debug() { return { state, time, stars, boat: { x: Math.round(boat.x), y: Math.round(boat.y), a: +boat.a.toFixed(2), vx: Math.round(boat.vx), vy: Math.round(boat.vy) },
       progress: -boat.y / course.length, seats: seats.map(s => ({ owner: s.owner.id, gas: +s.gas.toFixed(2) })), cx: course.cx(boat.y) }; },

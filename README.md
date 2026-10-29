@@ -143,6 +143,9 @@ Two party games, with everyone's phone as the controller. Players need nothing i
   **Playing alone:** join on your own phone (you get LEFT and RIGHT toots), and/or add 1–3 **computer crewmates**
   in the Games tab, who toot from their seats to help steer. The first player can also toot with the **TV remote**:
   hold ◀, ▶ or ▲ (all your seats) to charge and let go to toot.
+  Toot Boat draws in 3D (three.js, bundled in `remote/web/vendor/` under its MIT licence) when the TV supports WebGL,
+  and falls back to the flat top-down view when it doesn't. Toot sounds are synthesised fresh each time
+  (`remote/web/toot.js`): squeakers, rumblers, wet sputters and more, all procedural, no recordings.
 - **Your own content:** add family words, or questions as `Question | right answer | wrong | wrong | wrong`, one
   per line. They're used first, topped up from the built-in lists in `remote/games_data.py`.
 - Other phones can only join and play. They can't press TV keys, open apps or control the game.

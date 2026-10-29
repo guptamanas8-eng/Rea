@@ -363,7 +363,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.page("game_tv.html" if query.get("view") == ["game"] else "board.html")
         if path == "/play":
             return self.page("play.html")
-        if path in ("/race.js", "/boat.js"):
+        if path in ("/race.js", "/boat.js", "/boat3d.js", "/toot.js", "/vendor/three.module.min.js"):
             with open(os.path.join(HERE, "web", path[1:]), "rb") as f:
                 return self.send(200, f.read(), "text/javascript")
         if path == "/api/game/events":

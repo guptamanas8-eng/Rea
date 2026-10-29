@@ -57,6 +57,7 @@
 <body>
 <div id="app"><h1>Connecting…</h1></div>
 <div id="toast"></div>
+<script src="/toot.js"></script>
 <script>
 const OPT_COLORS = ['#e53935', '#1e88e5', '#f9a825', '#43a047'];
 const COLORS = ['#111111', '#e53935', '#fb8c00', '#fdd835', '#43a047', '#1e88e5', '#8e24aa', '#6d4c41'];
@@ -291,6 +292,7 @@ function boatHud(hd, myId) {
 // hold to charge (up to a second), release to toot; the phone plays its own toot too
 let tootAudio = null;
 function phoneToot(p) {
+  if (window.Toot) { window.Toot.play(p, Math.floor(Math.random() * 4)); return; }
   try {
     tootAudio = tootAudio || new (window.AudioContext || window.webkitAudioContext)();
     const a = tootAudio, t0 = a.currentTime, dur = 0.15 + p * 0.45, base = 80 + Math.random() * 40;
