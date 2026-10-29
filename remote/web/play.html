@@ -43,6 +43,12 @@
   .racehud .pos { font-size:34px; font-weight:900; color:#ffeb3b; } .racehud .meta { color:var(--dim); }
   .racehud .spd { margin-left:auto; font-weight:800; }
   .hbar { height:10px; border-radius:5px; background:#333; margin-top:8px; overflow:hidden; } .hbar div { height:100%; background:#66bb6a; }
+  .toot { position:relative; width:100%; min-height:220px; border-radius:24px; font-size:24px; font-weight:900; color:#fff; touch-action:none;
+    user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; overflow:hidden; }
+  .toot .fill { position:absolute; left:0; bottom:0; width:100%; height:0; background:rgba(255,255,255,.28); pointer-events:none; }
+  .toot span { position:relative; pointer-events:none; }
+  .toots { display:flex; gap:10px; } .toots > * { flex:1; }
+  .gas { height:12px; border-radius:6px; background:#333; overflow:hidden; margin-top:6px; } .gas div { height:100%; }
   label.auto { display:flex; align-items:center; gap:8px; color:var(--dim); font-size:15px; margin:8px 0; }
   #toast { position:fixed; left:16px; right:16px; bottom:14px; max-width:488px; margin:0 auto; padding:12px; border-radius:12px; background:#2b3039; text-align:center; opacity:0; transition:opacity .2s; pointer-events:none; }
   #toast.show { opacity:1; }
@@ -99,7 +105,7 @@ function joinScreen() {
     if (j.token) { token = j.token; store.set('tvgame-token', token); store.set('tvgame-name', n); buzz(30); connect(); }
   };
   name.onkeydown = e => { if (e.key === 'Enter') go(); };
-  return [h('h1', {}, { quiz: '⚡ Quiz Buzzer', race: '🏍️ Highway Brawl' }[view && view.mode] || '✏️ Draw & Guess'),
+  return [h('h1', {}, { quiz: '⚡ Quiz Buzzer', race: '🏍️ Highway Brawl', boat: '💨 Toot Boat' }[view && view.mode] || '✏️ Draw & Guess'),
     view && view.phase === 'idle' ? h('div', { class: 'card dim' }, 'No game is open yet. Ask the host to pick one.') :
     h('div', { class: 'card' }, h('div', { class: 'send' }, name, h('button', { class: 'primary', onclick: go }, 'Join')))];
 }
@@ -149,12 +155,13 @@ function render() {
   const timer = v.seconds != null && v.phase !== 'reveal' ? h('span', { class: 'timer' }, v.seconds + 's') : null;
 
   // screens are rebuilt only when something you act on changes, so a stroke or tap in progress isn't interrupted
-  const key = [v.phase, v.mode, v.race && v.race.id, v.draw && v.draw.turn, v.draw && v.draw.you_draw, v.draw && v.draw.word, v.quiz && v.quiz.index, v.quiz && v.quiz.your_choice].join('|');
+  const key = [v.phase, v.mode, v.race && v.race.id, v.boat && v.boat.id, v.draw && v.draw.turn, v.draw && v.draw.you_draw, v.draw && v.draw.word, v.quiz && v.quiz.index, v.quiz && v.quiz.your_choice].join('|');
   if (key === lastKey && v.phase !== 'over') {  // same screen: refresh the changing bits in place
     const t = document.querySelector('.timer'); if (t && timer) t.textContent = timer.textContent;
     const hint = document.querySelector('.hint'); if (hint && v.draw && !v.draw.you_draw) hint.textContent = v.draw.hint;
     const s = document.querySelector('.scorebox'); if (s) s.replaceChildren(scores(v));
     const rh = document.querySelector('.racehud-box'); if (rh && v.race) rh.replaceChildren(raceHud(v.race.hud));
+    const bh = document.querySelector('.boathud-box'); if (bh && v.boat) bh.replaceChildren(boatHud(v.boat.hud, v.you.id));
     const m = document.querySelector('.me'); if (m) m.replaceWith(me);
     return;
   }
@@ -164,7 +171,7 @@ function render() {
 
   if (v.phase === 'lobby') {
     app.replaceChildren(me, h('div', { class: 'card center' }, h('h1', {}, 'You\'re in! 🎉'),
-      h('div', { class: 'dim' }, `Waiting for the host to start ${{ draw: 'Draw & Guess', quiz: 'the quiz', race: 'the race' }[v.mode]}…`)), h('div', { class: 'scorebox' }, scores(v)),
+      h('div', { class: 'dim' }, `Waiting for the host to start ${{ draw: 'Draw & Guess', quiz: 'the quiz', race: 'the race', boat: 'the boat trip' }[v.mode]}…`)), h('div', { class: 'scorebox' }, scores(v)),
       h('button', { onclick: () => { if (confirm('Leave the game?')) post('leave', {}).then(() => { token = null; store.set('tvgame-token', null); connect(); }); } }, 'Leave'));
     return;
   }
@@ -223,6 +230,19 @@ function render() {
     setTimeout(() => input.focus(), 50);
     return;
   }
+  if (v.mode === 'boat' && v.phase === 'boat') {
+    if (!v.boat.aboard) {
+      app.replaceChildren(me, h('div', { class: 'card center' }, h('h1', {}, 'Boat trip in progress'), h('div', { class: 'dim' }, 'You joined after the start. Watch the TV, you\'re on the next trip!')));
+      return;
+    }
+    const solo = v.boat.crew.length === 1, idx = v.boat.crew.findIndex(c => c.id === v.you.id), n = v.boat.crew.length;
+    const where = solo ? 'You have both seats: left toot turns right, right toot turns left.'
+      : `Your seat: ${idx === 0 ? 'far left' : idx === n - 1 ? 'far right' : n === 3 ? 'middle' : idx === 1 ? 'left middle' : 'right middle'}. Tooting alone turns the boat ${idx < (n - 1) / 2 ? 'right' : idx > (n - 1) / 2 ? 'left' : 'nowhere, you push straight'}; toot together to go straight!`;
+    app.replaceChildren(me, h('div', { class: 'card boathud-box' }, boatHud(v.boat.hud, v.you.id)),
+      h('div', { class: 'toots' }, solo ? [tootButton('⬅ LEFT TOOT', 0, v.you.color), tootButton('RIGHT TOOT ➡', 1, v.you.color)] : [tootButton('HOLD… RELEASE TO TOOT', -1, v.you.color)]),
+      h('div', { class: 'dim', style: 'font-size:14px;margin-top:10px' }, where, ' Hold longer for a bigger toot. Beans refill your gas.'));
+    return;
+  }
   if (v.mode === 'race' && v.phase === 'race') {
     if (!v.race.racing) {
       app.replaceChildren(me, h('div', { class: 'card center' }, h('h1', {}, 'Race in progress'), h('div', { class: 'dim' }, 'You joined after the start. Watch the TV, you\'re in the next one!')));
@@ -260,13 +280,49 @@ function raceHud(hd) {
 }
 function ordinal(n) { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
 
+function boatHud(hd, myId) {
+  if (!hd || !hd.seats) return h('div', { class: 'dim' }, 'Get ready…');
+  const mine = hd.seats.filter(s => s.owner === myId), mm = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  return h('div', {}, h('div', { class: 'racehud' }, h('span', { class: 'pos', style: 'font-size:26px' }, Math.round(hd.progress * 100) + '%'),
+      h('span', { class: 'meta' }, 'of the river'), h('span', { class: 'spd' }, `${mm(hd.time)} · ★ ${hd.stars}`)),
+    mine.map(s => h('div', { class: 'gas' }, h('div', { style: `width:${Math.round(s.gas * 100)}%;background:${s.gas > 0.25 ? '#9ccc65' : '#ef5350'}` }))),
+    hd.status === 'countdown' ? h('div', { style: 'margin-top:8px;font-weight:700' }, 'Get ready…') : null);
+}
+// hold to charge (up to a second), release to toot; the phone plays its own toot too
+let tootAudio = null;
+function phoneToot(p) {
+  try {
+    tootAudio = tootAudio || new (window.AudioContext || window.webkitAudioContext)();
+    const a = tootAudio, t0 = a.currentTime, dur = 0.15 + p * 0.45, base = 80 + Math.random() * 40;
+    const o = a.createOscillator(), g = a.createGain(), f = a.createBiquadFilter(), l = a.createOscillator(), lg = a.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(base * 1.4, t0); o.frequency.exponentialRampToValueAtTime(base * 0.7, t0 + dur);
+    l.frequency.value = 20 + Math.random() * 12; lg.gain.value = base * 0.35; l.connect(lg); lg.connect(o.frequency);
+    f.type = 'lowpass'; f.frequency.value = 650 + p * 450; f.Q.value = 6;
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.4, t0 + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(f); f.connect(g); g.connect(a.destination); o.start(t0); l.start(t0); o.stop(t0 + dur + 0.05); l.stop(t0 + dur + 0.05);
+  } catch (e) {}
+}
+function tootButton(text, seat, color) {
+  const fill = h('div', { class: 'fill' }), b = h('button', { class: 'toot', style: 'background:' + color }, fill, h('span', {}, text));
+  let t0 = 0, timer = null;
+  const grow = () => { const p = Math.min(1, (performance.now() - t0) / 1000); fill.style.height = (p * 100) + '%'; if (t0) timer = requestAnimationFrame(grow); };
+  b.onpointerdown = e => { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch (err) {} t0 = performance.now(); buzz(10); grow(); };
+  const release = () => {
+    if (!t0) return;
+    const p = Math.min(1, (performance.now() - t0) / 1000); t0 = 0; cancelAnimationFrame(timer); fill.style.height = '0';
+    phoneToot(Math.max(0.25, p)); buzz(30 + p * 120); post('boat/toot', { seat, power: Math.max(0.25, p) });
+  };
+  b.onpointerup = release; b.onpointercancel = release; b.oncontextmenu = e => e.preventDefault();
+  return b;
+}
+
 // controls are sent only when a button changes, not every frame
 const ctl = { l: false, r: false, gas: false, brake: false };
 let autoGas = store.get('tvgame-autogas') === '1';
 function sendCtl() { post('race/input', { l: ctl.l, r: ctl.r, gas: ctl.gas || (autoGas && !ctl.brake), brake: ctl.brake }); }
 function holdButton(label, cls, keyName) {
   const b = h('button', { class: cls }, label);
-  const on = e => { e.preventDefault(); b.setPointerCapture && b.setPointerCapture(e.pointerId); if (!ctl[keyName]) { ctl[keyName] = true; b.classList.add('held'); buzz(8); sendCtl(); } };
+  const on = e => { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch (err) {} if (!ctl[keyName]) { ctl[keyName] = true; b.classList.add('held'); buzz(8); sendCtl(); } };
   const off = () => { if (ctl[keyName]) { ctl[keyName] = false; b.classList.remove('held'); sendCtl(); } };
   b.onpointerdown = on; b.onpointerup = off; b.onpointercancel = off; b.onlostpointercapture = off; b.oncontextmenu = e => e.preventDefault();
   return b;

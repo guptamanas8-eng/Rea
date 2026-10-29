@@ -135,6 +135,11 @@ Two party games, with everyone's phone as the controller. Players need nothing i
   for a few seconds. Two or more players race in split screen on the TV. Phones show the controls (steer, gas, brake,
   punch, kick, optional auto-accelerate) plus your place, lap, speed and health. Points go by finishing place, plus 10
   per knockout. Choose laps and how many computer rivals in the Games tab; **End race** stops early.
+- **Toot Boat** (1–4 players, co-op): everyone shares one boat on a winding river and pushes it by tooting from
+  their seat. Toot together and the boat goes straight; toot alone and it turns. Hold your phone's button to charge a
+  bigger toot, grab beans to refill gas and stars for points, and dodge rocks, drifting logs and whirlpools. A solo
+  player gets both seats (left and right buttons). The whole crew shares one score from speed and stars. Toot sounds
+  play on the TV and on each phone. An original game inspired by co-op "steer it together" party games.
 - **Your own content:** add family words, or questions as `Question | right answer | wrong | wrong | wrong`, one
   per line. They're used first, topped up from the built-in lists in `remote/games_data.py`.
 - Other phones can only join and play. They can't press TV keys, open apps or control the game.

@@ -1,4 +1,4 @@
-"""Draw & Guess, Quiz buzzer and Highway Brawl: the TV shows the game, phones on the same Wi-Fi are the controllers.
+"""Draw & Guess, Quiz buzzer, Highway Brawl and Toot Boat: the TV shows the game, phones on the same Wi-Fi are the controllers.
 
 One game at a time. The host (the phone running server.py) picks the game and
 starts it from the remote's Games tab; players join from /play with a name and
@@ -61,7 +61,7 @@ class Games:
         self.mode = None          # "draw" | "quiz"
         self.phase = "idle"       # idle | lobby | turn | question | reveal | over
         self.settings = {"draw_rounds": 2, "draw_seconds": 80, "quiz_count": 10, "quiz_seconds": 20,
-                         "race_laps": 2, "race_ai": 5}
+                         "race_laps": 2, "race_ai": 5, "boat_length": 2}
         self.custom_words, self.custom_questions = [], []
         self.feed = []
         self.deadline = None
@@ -105,7 +105,7 @@ class Games:
             self._end_question()
         elif self.phase == "reveal":
             self._next()
-        elif self.phase == "race":  # the TV never reported back (closed?), so stop waiting
+        elif self.phase in ("race", "boat"):  # the TV never reported back (closed?), so stop waiting
             self._finish()
 
     # -------------------------------------------------------------- players
@@ -159,7 +159,7 @@ class Games:
 
     # ----------------------------------------------------------------- host
     def open(self, mode, settings=None, words=None, questions=None):
-        if mode not in ("draw", "quiz", "race"):
+        if mode not in ("draw", "quiz", "race", "boat"):
             raise ValueError("unknown game")
         with self.cond:
             self.mode, self.phase, self.deadline = mode, "lobby", None
@@ -173,6 +173,7 @@ class Games:
             s["quiz_seconds"] = max(5, min(60, s["quiz_seconds"]))
             s["race_laps"] = max(1, min(3, s["race_laps"]))
             s["race_ai"] = max(0, min(7, s["race_ai"]))
+            s["boat_length"] = max(1, min(3, s["boat_length"]))
             if words is not None:
                 self.custom_words = parse_words(words)
             if questions is not None:
@@ -190,8 +191,8 @@ class Games:
             need = 2 if self.mode == "draw" else 1
             if len(self.players) < need:
                 raise ValueError(f"Need at least {need} players")
-            if self.mode == "race" and len(self.players) > 4:
-                raise ValueError("Highway Brawl has room for 4 riders; remove someone first")
+            if self.mode in ("race", "boat") and len(self.players) > 4:
+                raise ValueError("This game has room for 4 players; remove someone first")
             for p in self.players.values():
                 p["score"] = 0
             self.feed = []
@@ -208,6 +209,16 @@ class Games:
                              "racers": [{"id": p["id"], "name": p["name"], "color": p["color"]} for _, p in order],
                              "hud": {}, "standings": None}
                 self.phase = "race"
+                self.deadline = time.time() + 15 * 60
+                self._publish()
+                return
+            elif self.mode == "boat":
+                order = sorted(self.players.items(), key=lambda kv: kv[1]["joined"])
+                self.boat = {"id": secrets.token_hex(4), "seed": random.randint(1, 2 ** 31 - 1),
+                             "length": {1: 6000, 2: 9000, 3: 13000}[self.settings["boat_length"]],
+                             "crew": [{"id": p["id"], "name": p["name"], "color": p["color"]} for _, p in order],
+                             "hud": {}, "result": None}
+                self.phase = "boat"
                 self.deadline = time.time() + 15 * 60
                 self._publish()
                 return
@@ -229,7 +240,7 @@ class Games:
                 self._end_question()
             elif self.phase == "reveal":
                 self._next()
-            elif self.phase == "race":
+            elif self.phase in ("race", "boat"):
                 self._finish()
 
     def end(self):
@@ -474,6 +485,46 @@ class Games:
             self._finish()
             return {"ok": True}
 
+    # ------------------------------------------------------------- toot boat
+    def boat_toot(self, token, seat, power):
+        with self.cond:
+            p = self._player(token)
+            if self.phase != "boat":
+                return {"ok": False, "out": "No boat trip running"}
+            self._publish({"type": "boat_toot", "id": p["id"], "seat": int(seat),
+                           "power": max(0.0, min(1.0, float(power)))})
+            return {"ok": True}
+
+    def boat_hud(self, hud):
+        """Gas per seat, progress, time and stars, posted by the TV a few times a second."""
+        with self.cond:
+            if self.phase != "boat" or not isinstance(hud, dict):
+                return {"ok": False}
+            ids = {c["id"] for c in self.boat["crew"]}
+            seats = [{"owner": s.get("owner"), "gas": float(s.get("gas") or 0)} for s in hud.get("seats", [])[:4]
+                     if isinstance(s, dict) and s.get("owner") in ids]
+            self.boat["hud"] = {"seats": seats, "progress": float(hud.get("progress") or 0),
+                                "time": float(hud.get("time") or 0), "stars": int(hud.get("stars") or 0),
+                                "status": str(hud.get("status") or "")[:12]}
+            self._publish()
+            return {"ok": True}
+
+    def boat_result(self, result):
+        """Co-op: the whole crew shares one score from finishing, speed and stars."""
+        with self.cond:
+            if self.phase != "boat" or not isinstance(result, dict):
+                return {"ok": False}
+            done, t = bool(result.get("finished")), result.get("time")
+            stars, total = int(result.get("stars") or 0), int(result.get("total") or 0)
+            pts = stars * 20 + ((300 + max(0, 300 - int(float(t)))) if done and t is not None else 0)
+            for p in self.players.values():
+                if any(c["id"] == p["id"] for c in self.boat["crew"]):
+                    p["score"] += pts
+            self.boat["result"] = {"finished": done, "time": float(t) if t is not None else None,
+                                   "stars": stars, "total": total, "points": pts}
+            self._finish()
+            return {"ok": True}
+
     # ---------------------------------------------------------------- views
     def _public_players(self):
         return [{"id": p["id"], "name": p["name"], "score": p["score"], "color": p["color"],
@@ -515,6 +566,12 @@ class Games:
                 if me:
                     v["race"]["hud"] = r["hud"].get(me["id"])
                     v["race"]["racing"] = any(x["id"] == me["id"] for x in r["racers"])
+            if self.mode == "boat" and self.phase in ("boat", "over") and getattr(self, "boat", None):
+                b = self.boat
+                v["boat"] = {"id": b["id"], "seed": b["seed"], "length": b["length"], "crew": b["crew"],
+                             "result": b["result"], "hud": b["hud"]}
+                if me:
+                    v["boat"]["aboard"] = any(c["id"] == me["id"] for c in b["crew"])
             if self.mode == "quiz" and self.phase in ("question", "reveal"):
                 v["quiz"] = {"index": self.q_i + 1, "total": len(self.questions), "question": self.q["text"],
                              "options": self.q["options"], "answered": len(self.answers),

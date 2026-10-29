@@ -50,13 +50,14 @@
   .standings { font-size:2.6vh; display:grid; grid-template-columns:auto 1fr auto; gap:.6vh 1.2vw; }
 </style>
 <script src="/race.js"></script>
+<script src="/boat.js"></script>
 </head>
 <body>
 <div id="app"><div class="big"><div class="label">Connecting to the game…</div></div></div>
 <script>
 const OPT_COLORS = ['#e53935', '#1e88e5', '#f9a825', '#43a047'];
-let view = null, strokes = [], cv = null, ctx = null, layoutKey = '', raceId = null;
-const TITLES = { draw: '✏️ Draw & Guess', quiz: '⚡ Quiz Buzzer', race: '🏍️ Highway Brawl' };
+let view = null, strokes = [], cv = null, ctx = null, layoutKey = '', raceId = null, boatId = null;
+const TITLES = { draw: '✏️ Draw & Guess', quiz: '⚡ Quiz Buzzer', race: '🏍️ Highway Brawl', boat: '💨 Toot Boat' };
 function postJson(path, body) { return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {}); }
 
 function h(tag, attrs, ...kids) {
@@ -97,6 +98,25 @@ function render(v) {
     return;
   }
   if (raceId) { Race.stop(); raceId = null; }
+  if (v.mode === 'boat' && v.phase === 'boat' && v.boat) {
+    if (boatId === v.boat.id) return;
+    boatId = v.boat.id;
+    const c = h('canvas', { id: 'race' });
+    app.replaceChildren(c);
+    Boat.start({ canvas: c, seed: v.boat.seed, length: v.boat.length, crew: v.boat.crew,
+      hud: hud => postJson('/api/game/boat/hud', { hud }), result: result => postJson('/api/game/boat/result', { result }) });
+    return;
+  }
+  if (boatId) { Boat.stop(); boatId = null; }
+  if (v.phase === 'over' && v.mode === 'boat' && v.boat && v.boat.result) {
+    const r = v.boat.result, mm = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+    app.append(header(v, 'Trip complete'), h('main', {}, h('div', { class: 'center' }, h('div', { class: 'big' },
+      h('div', { class: 'value', style: 'font-size:8vh' }, r.finished ? `🏁 Made it in ${mm(r.time)}!` : '⏰ Out of time!'),
+      h('div', { class: 'label', style: 'font-size:5vh;color:var(--gold)' }, `★ ${r.stars} of ${r.total} stars`),
+      h('div', { class: 'label' }, `+${r.points} points for the whole crew`))),
+      h('aside', {}, playersCard(v), miniJoin(v))));
+    return;
+  }
   app.replaceChildren();  // the drawing canvas element is reused below, so strokes survive re-renders
 
   if (!v.mode || v.phase === 'idle') {
@@ -183,6 +203,7 @@ function onEvent(ev) {
   if (ev.type === 'view') { view = ev.view; render(view); }
   else if (ev.type === 'race_input') { if (raceId) Race.input(ev.id, ev); }
   else if (ev.type === 'race_action') { if (raceId) Race.action(ev.id, ev.action); }
+  else if (ev.type === 'boat_toot') { if (boatId) Boat.toot(ev.id, ev.seat, ev.power); }
   else if (ev.type === 'strokes') { strokes = ev.strokes; redraw(); }
   else if (ev.type === 'points') {
     let s = strokes.find(x => x.id === ev.id);

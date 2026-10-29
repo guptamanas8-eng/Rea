@@ -299,9 +299,9 @@ SKETCH = Sketch()
 GAMES = Games()
 # what phones other than this one may POST: joining and playing, never TV control
 PLAYER_POSTS = {"/api/game/join", "/api/game/leave", "/api/game/guess", "/api/game/answer",
-                "/api/game/draw", "/api/game/draw/edit", "/api/game/race/input", "/api/game/race/action"}
+                "/api/game/draw", "/api/game/draw/edit", "/api/game/race/input", "/api/game/race/action", "/api/game/boat/toot"}
 # what only the TV (or this phone) may POST: the race engine runs on the TV and reports back
-TV_POSTS = {"/api/game/race/hud", "/api/game/race/result"}
+TV_POSTS = {"/api/game/race/hud", "/api/game/race/result", "/api/game/boat/hud", "/api/game/boat/result"}
 
 
 def join_url():
@@ -363,8 +363,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.page("game_tv.html" if query.get("view") == ["game"] else "board.html")
         if path == "/play":
             return self.page("play.html")
-        if path == "/race.js":
-            with open(os.path.join(HERE, "web", "race.js"), "rb") as f:
+        if path in ("/race.js", "/boat.js"):
+            with open(os.path.join(HERE, "web", path[1:]), "rb") as f:
                 return self.send(200, f.read(), "text/javascript")
         if path == "/api/game/events":
             return self.game_events((query.get("t") or [None])[0])
@@ -510,6 +510,12 @@ class Handler(BaseHTTPRequestHandler):
             return GAMES.race_input(t, b)
         if action == "race/action":
             return GAMES.race_action(t, b.get("action"))
+        if action == "boat/toot":
+            return GAMES.boat_toot(t, b.get("seat", -1), b.get("power", 0.5))
+        if action == "boat/hud":
+            return GAMES.boat_hud(b.get("hud"))
+        if action == "boat/result":
+            return GAMES.boat_result(b.get("result"))
         if action == "race/hud":
             return GAMES.race_hud(b.get("hud"))
         if action == "race/result":
