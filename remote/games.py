@@ -1,4 +1,4 @@
-"""Draw & Guess, Quiz buzzer, Highway Brawl and Toot Boat: the TV shows the game, phones on the same Wi-Fi are the controllers.
+"""Draw & Guess, Quiz buzzer, Highway Brawl, Toot Boat and Tug of War: the TV shows the game, phones on the same Wi-Fi are the controllers.
 
 One game at a time. The host (the phone running server.py) picks the game and
 starts it from the remote's Games tab; players join from /play with a name and
@@ -18,6 +18,9 @@ PLAYER_COLORS = ["#e53935", "#1e88e5", "#43a047", "#fb8c00", "#8e24aa", "#00897b
                  "#d81b60", "#6d4c41", "#3949ab", "#c0ca33"]
 MAX_PLAYERS = 10
 REVEAL_SECONDS = 6
+TUG_TEAM_MAX = 3
+TUG_PULL = 0.022          # rope travel per (balanced) tap; the marker has to travel 1.0 to a team's line
+TUG_MAX_RATE = 16         # taps per second a phone may count, so an auto-clicker can't win
 
 
 def _norm(s):
@@ -61,7 +64,9 @@ class Games:
         self.mode = None          # "draw" | "quiz"
         self.phase = "idle"       # idle | lobby | turn | question | reveal | over
         self.settings = {"draw_rounds": 2, "draw_seconds": 80, "quiz_count": 10, "quiz_seconds": 20,
-                         "race_laps": 2, "race_ai": 5, "boat_length": 2, "boat_bots": 0}
+                         "race_laps": 2, "race_ai": 5, "boat_length": 2, "boat_bots": 0,
+                         "tug_first_to": 2, "tug_balance": 1}
+        self.tug_names = {"A": "Team Blue", "B": "Team Red"}
         self.custom_words, self.custom_questions = [], []
         self.feed = []
         self.deadline = None
@@ -90,8 +95,10 @@ class Games:
 
     def _ticker(self):
         while True:
-            time.sleep(0.25)
+            time.sleep(0.05)
             with self.cond:
+                if self.phase == "tug":
+                    self._tug_tick()
                 if self.deadline and time.time() >= self.deadline:
                     self.deadline = None
                     self._timeout()
@@ -128,7 +135,9 @@ class Games:
             used = {p["color"] for p in self.players.values()}
             color = next((c for c in PLAYER_COLORS if c not in used), PLAYER_COLORS[0])
             self.players[token] = {"id": secrets.token_hex(4), "name": name, "score": 0, "color": color,
-                                   "joined": time.time(), "last_guess": 0}
+                                   "joined": time.time(), "last_guess": 0, "team": None}
+            if self.mode == "tug":
+                self.players[token]["team"] = self._tug_open_team()   # smaller side with room, else watch
             self._say(f"{name} joined", "join")
             self._publish()
             return {"token": token, "id": self.players[token]["id"]}
@@ -148,6 +157,8 @@ class Games:
                 self.leave(token)
 
     def _player_gone(self, token):
+        if self.phase == "tug":
+            getattr(self, "tug", {}).get("pending", {}).pop(token, None)
         if self.phase == "turn":
             if token == self.drawer:
                 self._say("The drawer left; next turn", "info")
@@ -158,8 +169,8 @@ class Games:
             self._end_question()
 
     # ----------------------------------------------------------------- host
-    def open(self, mode, settings=None, words=None, questions=None):
-        if mode not in ("draw", "quiz", "race", "boat"):
+    def open(self, mode, settings=None, words=None, questions=None, teams=None):
+        if mode not in ("draw", "quiz", "race", "boat", "tug"):
             raise ValueError("unknown game")
         with self.cond:
             self.mode, self.phase, self.deadline = mode, "lobby", None
@@ -175,6 +186,17 @@ class Games:
             s["race_ai"] = max(0, min(7, s["race_ai"]))
             s["boat_length"] = max(1, min(3, s["boat_length"]))
             s["boat_bots"] = max(0, min(3, s["boat_bots"]))
+            s["tug_first_to"] = max(1, min(3, s["tug_first_to"]))
+            s["tug_balance"] = 1 if s["tug_balance"] else 0
+            if isinstance(teams, dict):
+                for k in ("A", "B"):
+                    if teams.get(k):
+                        self.tug_names[k] = self._clean_team_name(teams[k])
+            if mode == "tug":   # sort anyone already here into teams
+                for p in self.players.values():
+                    p["team"] = None
+                for t in sorted(self.players, key=lambda t: self.players[t]["joined"]):
+                    self.players[t]["team"] = self._tug_open_team()
             if words is not None:
                 self.custom_words = parse_words(words)
             if questions is not None:
@@ -213,6 +235,15 @@ class Games:
                 self.deadline = time.time() + 15 * 60
                 self._publish()
                 return
+            elif self.mode == "tug":
+                if not self._tug_members("A") or not self._tug_members("B"):
+                    raise ValueError("Each team needs at least one player")
+                self.tug = {"id": secrets.token_hex(4), "score": {"A": 0, "B": 0}, "round": 1, "p": 0.0,
+                            "stage": "countdown", "stage_end": time.time() + 3.5, "winner": None,
+                            "pending": {}, "last": {}, "champion": None}
+                self.phase = "tug"
+                self._publish()
+                return
             elif self.mode == "boat":
                 order = sorted(self.players.items(), key=lambda kv: kv[1]["joined"])
                 self.boat = {"id": secrets.token_hex(4), "seed": random.randint(1, 2 ** 31 - 1),
@@ -243,6 +274,8 @@ class Games:
             elif self.phase == "reveal":
                 self._next()
             elif self.phase in ("race", "boat"):
+                self._finish()
+            elif self.phase == "tug":
                 self._finish()
 
     def end(self):
@@ -527,6 +560,124 @@ class Games:
             self._finish()
             return {"ok": True}
 
+    # ------------------------------------------------------------ tug of war
+    @staticmethod
+    def _clean_team_name(name):
+        name = re.sub(r"[\x00-\x1f<>]", "", str(name)).strip()[:18]
+        if not name:
+            raise ValueError("Type a team name")
+        return name
+
+    def _tug_members(self, team):
+        return [t for t, p in sorted(self.players.items(), key=lambda kv: kv[1]["joined"]) if p.get("team") == team]
+
+    def _tug_open_team(self):
+        a, b = len(self._tug_members("A")), len(self._tug_members("B"))
+        if a >= TUG_TEAM_MAX and b >= TUG_TEAM_MAX:
+            return None
+        if a >= TUG_TEAM_MAX:
+            return "B"
+        if b >= TUG_TEAM_MAX:
+            return "A"
+        return "A" if a <= b else "B"
+
+    def tug_team(self, token, team):
+        """Switch sides (or sit out with team None) before a match starts."""
+        with self.cond:
+            p = self._player(token)
+            if self.mode != "tug" or self.phase not in ("lobby", "over"):
+                return {"ok": False, "out": "You can switch teams before the match starts"}
+            if team not in ("A", "B", None):
+                raise ValueError("bad team")
+            if team and team != p["team"] and len(self._tug_members(team)) >= TUG_TEAM_MAX:
+                return {"ok": False, "out": f"{self.tug_names[team]} is full ({TUG_TEAM_MAX} players)"}
+            p["team"] = team
+            self._publish()
+            return {"ok": True}
+
+    def tug_rename(self, team, name, token=None):
+        """Players rename their own team; the host (token None) can rename either."""
+        with self.cond:
+            if token is not None:
+                p = self._player(token)
+                if p.get("team") != team:
+                    return {"ok": False, "out": "You can only rename your own team"}
+            if team not in ("A", "B"):
+                raise ValueError("bad team")
+            self.tug_names[team] = self._clean_team_name(name)
+            self._publish()
+            return {"ok": True}
+
+    def tug_tap(self, token, count):
+        """A batch of taps from one phone (sent every ~100 ms), capped to a human tapping rate."""
+        with self.cond:
+            p = self._player(token)
+            if self.phase != "tug" or self.tug["stage"] != "pull" or p.get("team") not in ("A", "B"):
+                return {"ok": False}
+            now = time.time()
+            since = now - self.tug["last"].get(token, now - 0.25)
+            self.tug["last"][token] = now
+            allowed = max(1, int(since * TUG_MAX_RATE + 1.5))
+            n = max(0, min(int(count), allowed, 30))
+            self.tug["pending"][token] = self.tug["pending"].get(token, 0) + n
+            return {"ok": True}
+
+    def _tug_tick(self):
+        g, now = self.tug, time.time()
+        if g["stage"] == "countdown":
+            if now >= g["stage_end"]:
+                g["stage"] = "pull"
+                g["last"] = {}
+                self._publish()
+            return
+        if g["stage"] == "roundover":
+            if now >= g["stage_end"]:
+                if g["score"][g["winner"]] >= self.settings["tug_first_to"]:
+                    g["champion"] = g["winner"]
+                    self.feed = []
+                    self._say(f"🏆 {self.tug_names[g['winner']]} win the match!", "win")
+                    self.phase, self.deadline = "over", None
+                    self._publish()
+                else:
+                    g.update(round=g["round"] + 1, p=0.0, stage="countdown", stage_end=now + 3.5, winner=None)
+                    self._publish()
+            return
+        # pulling: every teammate's taps add up; with "balance" on, a smaller team's taps count for more
+        members = {k: self._tug_members(k) for k in ("A", "B")}
+        if not members["A"] or not members["B"]:
+            return self._tug_round_won("B" if not members["A"] else "A")
+        taps = {"A": 0, "B": 0}
+        by_id = {}
+        for token, n in g["pending"].items():
+            p = self.players.get(token)
+            if p and p.get("team") in taps and n:
+                taps[p["team"]] += n
+                by_id[p["id"]] = n
+        g["pending"] = {}
+        if not by_id:
+            return
+        if self.settings["tug_balance"]:
+            avg = (len(members["A"]) + len(members["B"])) / 2
+            force = {k: taps[k] * avg / len(members[k]) for k in taps}
+        else:
+            force = taps
+        g["p"] = max(-1.0, min(1.0, g["p"] + (force["A"] - force["B"]) * TUG_PULL))
+        self._publish({"type": "tug", "p": round(g["p"], 4), "taps": by_id,
+                       "team_taps": taps})
+        if g["p"] >= 1:
+            self._tug_round_won("A")
+        elif g["p"] <= -1:
+            self._tug_round_won("B")
+
+    def _tug_round_won(self, team):
+        g = self.tug
+        g["score"][team] += 1
+        g["winner"], g["stage"], g["stage_end"] = team, "roundover", time.time() + 3.5
+        for t in self._tug_members(team):
+            self.players[t]["score"] += 100
+        self._say(f"{self.tug_names[team]} win round {g['round']}!", "win")
+        self._publish()
+
     # ---------------------------------------------------------------- views
     def _public_players(self):
         return [{"id": p["id"], "name": p["name"], "score": p["score"], "color": p["color"],
@@ -574,6 +725,19 @@ class Games:
                              "result": b["result"], "hud": b["hud"]}
                 if me:
                     v["boat"]["aboard"] = any(c["id"] == me["id"] for c in b["crew"])
+            if self.mode == "tug":
+                roster = lambda k: [{"id": self.players[t]["id"], "name": self.players[t]["name"]} for t in self._tug_members(k)]
+                g = getattr(self, "tug", None) if self.phase in ("tug", "over") else None
+                v["tug"] = {"names": dict(self.tug_names), "A": roster("A"), "B": roster("B"),
+                            "watching": [{"id": p["id"], "name": p["name"]} for p in self.players.values() if not p.get("team")],
+                            "first_to": self.settings["tug_first_to"], "max": TUG_TEAM_MAX,
+                            "balance": bool(self.settings["tug_balance"])}
+                if g:
+                    v["tug"].update(id=g["id"], score=g["score"], round=g["round"], p=g["p"], stage=g["stage"],
+                                    winner=g["winner"], champion=g["champion"],
+                                    stage_left=max(0, round(g["stage_end"] - time.time(), 1)))
+                if me:
+                    v["tug"]["you_team"] = me.get("team")
             if self.mode == "quiz" and self.phase in ("question", "reveal"):
                 v["quiz"] = {"index": self.q_i + 1, "total": len(self.questions), "question": self.q["text"],
                              "options": self.q["options"], "answered": len(self.answers),

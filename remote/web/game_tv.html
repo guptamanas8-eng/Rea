@@ -51,6 +51,7 @@
 </style>
 <script src="/race.js"></script>
 <script src="/toot.js"></script>
+<script src="/tug.js"></script>
 <script src="/boat.js"></script>
 <script type="module" src="/boat3d.js"></script>
 </head>
@@ -59,7 +60,8 @@
 <script>
 const OPT_COLORS = ['#e53935', '#1e88e5', '#f9a825', '#43a047'];
 let view = null, strokes = [], cv = null, ctx = null, layoutKey = '', raceId = null, boatId = null;
-const TITLES = { draw: '✏️ Draw & Guess', quiz: '⚡ Quiz Buzzer', race: '🏍️ Highway Brawl', boat: '💨 Toot Boat' };
+const TITLES = { draw: '✏️ Draw & Guess', quiz: '⚡ Quiz Buzzer', race: '🏍️ Highway Brawl', boat: '💨 Toot Boat', tug: '🪢 Tug of War' };
+let tugOn = false;
 function postJson(path, body) { return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {}); }
 
 function h(tag, attrs, ...kids) {
@@ -100,6 +102,13 @@ function render(v) {
     return;
   }
   if (raceId) { Race.stop(); raceId = null; }
+  // Tug of War draws its arena itself: lobby, match and result all on one canvas
+  if (v.mode === 'tug' && ['lobby', 'tug', 'over'].includes(v.phase)) {
+    if (!tugOn) { const c = h('canvas', { id: 'race' }); app.replaceChildren(c); Tug.start(c); tugOn = true; }
+    Tug.view(v);
+    return;
+  }
+  if (tugOn) { Tug.stop(); tugOn = false; }
   if (v.mode === 'boat' && v.phase === 'boat' && v.boat) {
     if (boatId === v.boat.id) return;
     boatId = v.boat.id;
@@ -206,6 +215,7 @@ function onEvent(ev) {
   else if (ev.type === 'race_input') { if (raceId) Race.input(ev.id, ev); }
   else if (ev.type === 'race_action') { if (raceId) Race.action(ev.id, ev.action); }
   else if (ev.type === 'boat_toot') { if (boatId) Boat.toot(ev.id, ev.seat, ev.power); }
+  else if (ev.type === 'tug') { if (tugOn) Tug.event(ev); }
   else if (ev.type === 'strokes') { strokes = ev.strokes; redraw(); }
   else if (ev.type === 'points') {
     let s = strokes.find(x => x.id === ev.id);

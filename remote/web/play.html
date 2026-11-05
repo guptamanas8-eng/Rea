@@ -49,6 +49,19 @@
   .toot span { position:relative; pointer-events:none; }
   .toots { display:flex; gap:10px; } .toots > * { flex:1; }
   .gas { height:12px; border-radius:6px; background:#333; overflow:hidden; margin-top:6px; } .gas div { height:100%; }
+  .teams { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .team { border:4px solid #151515; border-radius:18px; padding:12px; color:#fff; min-height:150px; text-align:left; font-size:15px; display:flex; flex-direction:column; gap:4px; }
+  .team b { font-size:19px; } .team.mine { outline:4px solid #fff; } .team .who { opacity:.92; }
+  .team .act { margin-top:auto; font-weight:800; background:rgba(0,0,0,.22); border-radius:10px; padding:6px; text-align:center; }
+  .ropebar { position:relative; height:26px; border-radius:13px; border:3px solid #151515; overflow:hidden; display:flex; margin:6px 0 4px; }
+  .ropebar div.side { flex:1; } .ropebar .mark { position:absolute; top:-3px; width:18px; height:26px; margin-left:-9px; background:#ffd21f; border:3px solid #151515; transform:rotate(45deg) scale(.75); transition:left .12s linear; }
+  .pull { display:block; margin:18px auto 8px; width:min(78vw, 300px); height:min(78vw, 300px); border-radius:50%; border:8px solid #151515; color:#fff;
+    font-size:44px; font-weight:900; text-shadow:0 3px 0 #151515; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;
+    box-shadow:inset 0 -14px 0 rgba(0,0,0,.18), 0 10px 0 #151515; transition:transform .05s; position:relative; }
+  .pull.down { transform:translateY(6px) scale(.97); box-shadow:inset 0 -8px 0 rgba(0,0,0,.18), 0 4px 0 #151515; }
+  .pull.team-pulse::after { content:''; position:absolute; inset:-14px; border-radius:50%; border:6px solid rgba(255,255,255,.75); animation:ring .35s ease-out; }
+  @keyframes ring { from { transform:scale(.85); opacity:1; } to { transform:scale(1.15); opacity:0; } }
+  .mates { min-height:26px; text-align:center; font-weight:800; color:#e8fff8; }
   label.auto { display:flex; align-items:center; gap:8px; color:var(--dim); font-size:15px; margin:8px 0; }
   #toast { position:fixed; left:16px; right:16px; bottom:14px; max-width:488px; margin:0 auto; padding:12px; border-radius:12px; background:#2b3039; text-align:center; opacity:0; transition:opacity .2s; pointer-events:none; }
   #toast.show { opacity:1; }
@@ -94,6 +107,7 @@ function connect() {
   es.onmessage = m => {
     const ev = JSON.parse(m.data);
     if (ev.type === 'view') { view = ev.view; if (token && ev.view.you === null) { token = null; store.set('tvgame-token', null); } render(); }
+    else if (ev.type === 'tug') onTugEvent(ev);
   };
   es.onerror = () => { const a = document.getElementById('app'); if (!view) a.replaceChildren(h('h1', {}, 'Can\'t reach the game. Same Wi-Fi as the TV?')); };
 }
@@ -106,7 +120,7 @@ function joinScreen() {
     if (j.token) { token = j.token; store.set('tvgame-token', token); store.set('tvgame-name', n); buzz(30); connect(); }
   };
   name.onkeydown = e => { if (e.key === 'Enter') go(); };
-  return [h('h1', {}, { quiz: '⚡ Quiz Buzzer', race: '🏍️ Highway Brawl', boat: '💨 Toot Boat' }[view && view.mode] || '✏️ Draw & Guess'),
+  return [h('h1', {}, { quiz: '⚡ Quiz Buzzer', race: '🏍️ Highway Brawl', boat: '💨 Toot Boat', tug: '🪢 Tug of War' }[view && view.mode] || '✏️ Draw & Guess'),
     view && view.phase === 'idle' ? h('div', { class: 'card dim' }, 'No game is open yet. Ask the host to pick one.') :
     h('div', { class: 'card' }, h('div', { class: 'send' }, name, h('button', { class: 'primary', onclick: go }, 'Join')))];
 }
@@ -156,7 +170,8 @@ function render() {
   const timer = v.seconds != null && v.phase !== 'reveal' ? h('span', { class: 'timer' }, v.seconds + 's') : null;
 
   // screens are rebuilt only when something you act on changes, so a stroke or tap in progress isn't interrupted
-  const key = [v.phase, v.mode, v.race && v.race.id, v.boat && v.boat.id, v.draw && v.draw.turn, v.draw && v.draw.you_draw, v.draw && v.draw.word, v.quiz && v.quiz.index, v.quiz && v.quiz.your_choice].join('|');
+  const tg = v.tug, tugKey = tg ? [tg.stage, tg.round, tg.you_team, tg.id, tg.A.length, tg.B.length, tg.names.A, tg.names.B, tg.A.concat(tg.B).map(p => p.name).join('+')].join(',') : '';
+  const key = [v.phase, v.mode, tugKey, v.race && v.race.id, v.boat && v.boat.id, v.draw && v.draw.turn, v.draw && v.draw.you_draw, v.draw && v.draw.word, v.quiz && v.quiz.index, v.quiz && v.quiz.your_choice].join('|');
   if (key === lastKey && v.phase !== 'over') {  // same screen: refresh the changing bits in place
     const t = document.querySelector('.timer'); if (t && timer) t.textContent = timer.textContent;
     const hint = document.querySelector('.hint'); if (hint && v.draw && !v.draw.you_draw) hint.textContent = v.draw.hint;
@@ -170,6 +185,7 @@ function render() {
   lastKey = key;
   if (newTurn) myLog = [];
 
+  if (v.mode === 'tug' && v.tug && ['lobby', 'tug', 'over'].includes(v.phase)) { app.replaceChildren(me, ...tugScreen(v)); return; }
   if (v.phase === 'lobby') {
     app.replaceChildren(me, h('div', { class: 'card center' }, h('h1', {}, 'You\'re in! 🎉'),
       h('div', { class: 'dim' }, `Waiting for the host to start ${{ draw: 'Draw & Guess', quiz: 'the quiz', race: 'the race', boat: 'the boat trip' }[v.mode]}…`)), h('div', { class: 'scorebox' }, scores(v)),
@@ -316,6 +332,75 @@ function tootButton(text, seat, color) {
   };
   b.onpointerup = release; b.onpointercancel = release; b.oncontextmenu = e => e.preventDefault();
   return b;
+}
+
+// ------------------------------------------------------------------ tug of war
+const TUGC = { A: '#19bdf0', B: '#ff5a5a' };
+let tugUI = null, tugPending = 0, tugTimer = null, lastMateBuzz = 0;
+function tugScreen(v) {
+  const t = v.tug, mine = t.you_team, other = mine === 'A' ? 'B' : 'A';
+  tugUI = null;
+  if (v.phase === 'lobby') {
+    const card = k => h('button', { class: 'team' + (mine === k ? ' mine' : ''), style: 'background:' + TUGC[k],
+        onclick: () => mine !== k && post('tug/team', { team: k }).then(j => j.ok && buzz(20)) },
+      h('b', {}, t.names[k]), h('span', {}, `${t[k].length}/${t.max} players`),
+      t[k].map(p => h('span', { class: 'who' }, (p.id === v.you.id ? '⭐ ' : '• ') + p.name)),
+      h('span', { class: 'act' }, mine === k ? "You're on this team" : t[k].length >= t.max ? 'Full' : 'Tap to join'));
+    const rename = h('input', { type: 'text', maxlength: 18, placeholder: 'New team name', value: mine ? t.names[mine] : '' });
+    return [h('h1', {}, '🪢 Tug of War'),
+      h('div', { class: 'teams' }, card('A'), card('B')),
+      mine ? h('div', { class: 'card' }, h('div', { class: 'dim' }, 'Rename your team'),
+        h('div', { class: 'send', style: 'margin-top:8px' }, rename, h('button', { class: 'primary', onclick: () => post('tug/rename', { team: mine, name: rename.value }).then(j => j.ok && toast('Team renamed')) }, 'Save'))) :
+        h('div', { class: 'card center dim' }, 'Pick a side above to play.'),
+      h('div', { class: 'card center dim' }, 'Waiting for the host to start. Up to 3 players a side.'),
+      mine ? h('button', { onclick: () => post('tug/team', { team: null }) }, 'Sit out and watch') : null];
+  }
+  const score = h('div', { class: 'card center', style: 'font-weight:900;font-size:20px' },
+    h('span', { style: 'color:' + TUGC.A }, `${t.names.A} ${t.score ? t.score.A : 0}`), '  –  ', h('span', { style: 'color:' + TUGC.B }, `${t.score ? t.score.B : 0} ${t.names.B}`));
+  if (v.phase === 'over') {
+    if (t.champion) buzz(mine === t.champion ? [80, 60, 80, 60, 200] : [200]);
+    return [h('div', { class: 'card center' }, h('h1', {}, !t.champion ? 'Match ended' : mine === t.champion ? '🏆 Your team won!' : mine ? 'Your team lost this time' : `🏆 ${t.names[t.champion]} won!`),
+      h('div', { class: 'dim' }, 'The host can start a rematch.')), score];
+  }
+  if (!mine) return [h('div', { class: 'card center' }, h('h1', {}, 'Watching 👀'), h('div', { class: 'dim' }, 'Join a team before the next match to pull.')), score];
+  const bar = h('div', { class: 'ropebar' }, h('div', { class: 'side', style: 'background:' + TUGC.A }), h('div', { class: 'side', style: 'background:' + TUGC.B }));
+  const mark = h('div', { class: 'mark' }); bar.append(mark);
+  const placeMark = p => { mark.style.left = (50 - p * 50) + '%'; };
+  placeMark(t.p || 0);
+  const head = t.stage === 'countdown' ? 'Get ready… tap when the TV says PULL!' : t.stage === 'roundover' ? (t.winner === mine ? '💪 Your team won the round!' : 'They got that one…') : `Pull for ${t.names[mine]}!`;
+  if (t.stage === 'roundover') buzz(t.winner === mine ? [60, 40, 120] : [250]);
+  const btn = h('button', { class: 'pull', style: 'background:' + TUGC[mine], disabled: t.stage !== 'pull' }, t.stage === 'pull' ? 'PULL!' : t.stage === 'countdown' ? '…' : '✋');
+  const mates = h('div', { class: 'mates' }, t[mine].length > 1 ? `With ${t[mine].filter(p => p.id !== v.you.id).map(p => p.name).join(' & ')}: you'll feel their pulls` : 'Tap as fast as you can, use two thumbs!');
+  btn.onpointerdown = e => {
+    e.preventDefault(); if (t.stage !== 'pull') return;
+    tugPending++; btn.classList.add('down'); buzz(6);
+    if (!tugTimer) tugTimer = setTimeout(sendTaps, 100);
+  };
+  btn.onpointerup = btn.onpointercancel = btn.onpointerleave = () => btn.classList.remove('down');
+  btn.oncontextmenu = e => e.preventDefault();
+  tugUI = { placeMark, btn, mates, team: mine, roster: t, myId: v.you.id };
+  return [h('div', { class: 'card' }, h('div', { style: 'font-weight:800' }, head), bar,
+      h('div', { class: 'dim', style: 'display:flex;justify-content:space-between;font-size:13px' }, h('span', {}, '◀ ' + t.names.A), h('span', {}, t.names.B + ' ▶'))),
+    btn, mates, score];
+}
+function sendTaps() {
+  tugTimer = null;
+  if (!tugPending) return;
+  const n = tugPending; tugPending = 0;
+  // fire and forget: a late batch after the round ends is simply ignored
+  fetch('/api/game/tug/tap', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ t: token, n }) }).catch(() => {});
+}
+function onTugEvent(ev) {
+  if (!tugUI) return;
+  tugUI.placeMark(ev.p);
+  // feel your teammates: every batch of their taps buzzes this phone and pulses the button
+  const mates = tugUI.roster[tugUI.team].filter(p => p.id !== tugUI.myId && ev.taps[p.id]);
+  if (mates.length) {
+    const n = mates.reduce((s, p) => s + ev.taps[p.id], 0), now = performance.now();
+    if (now - lastMateBuzz > 70) { buzz(Math.min(45, 12 + n * 6)); lastMateBuzz = now; }
+    tugUI.btn.classList.remove('team-pulse'); void tugUI.btn.offsetWidth; tugUI.btn.classList.add('team-pulse');
+    tugUI.mates.textContent = mates.map(p => `${p.name} +${ev.taps[p.id]}`).join('   ') + ' 💪';
+  }
 }
 
 // controls are sent only when a button changes, not every frame

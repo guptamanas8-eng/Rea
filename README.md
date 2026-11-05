@@ -146,6 +146,12 @@ Two party games, with everyone's phone as the controller. Players need nothing i
   Toot Boat draws in 3D (three.js, bundled in `remote/web/vendor/` under its MIT licence) when the TV supports WebGL,
   and falls back to the flat top-down view when it doesn't. Toot sounds are synthesised fresh each time
   (`remote/web/toot.js`): squeakers, rumblers, wet sputters and more, all procedural, no recordings.
+- **Tug of War** (2–6 players, 1–3 a side): two teams with names you choose (in the Games tab, or any player renames
+  their own team in the lobby). Players pick a side on their phone and everyone's name shows in the arena. Tap the big
+  PULL button as fast as you can; the first team to drag the yellow marker over their own white line wins the round,
+  and the match goes to the first team to win 1, 2 or 3 rounds. Every tap by a teammate buzzes your phone and pulses
+  your button, so you feel your team pulling together. "Even out smaller teams" (on by default) makes a lone player's
+  taps count as much as a bigger team's; taps are capped at a human rate, so auto-clickers don't win.
 - **Your own content:** add family words, or questions as `Question | right answer | wrong | wrong | wrong`, one
   per line. They're used first, topped up from the built-in lists in `remote/games_data.py`.
 - Other phones can only join and play. They can't press TV keys, open apps or control the game.

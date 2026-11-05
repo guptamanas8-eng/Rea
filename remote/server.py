@@ -299,7 +299,8 @@ SKETCH = Sketch()
 GAMES = Games()
 # what phones other than this one may POST: joining and playing, never TV control
 PLAYER_POSTS = {"/api/game/join", "/api/game/leave", "/api/game/guess", "/api/game/answer",
-                "/api/game/draw", "/api/game/draw/edit", "/api/game/race/input", "/api/game/race/action", "/api/game/boat/toot"}
+                "/api/game/draw", "/api/game/draw/edit", "/api/game/race/input", "/api/game/race/action", "/api/game/boat/toot",
+                "/api/game/tug/tap", "/api/game/tug/team", "/api/game/tug/rename"}
 # what only the TV (or this phone) may POST: the race engine runs on the TV and reports back
 TV_POSTS = {"/api/game/race/hud", "/api/game/race/result", "/api/game/boat/hud", "/api/game/boat/result"}
 
@@ -363,7 +364,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.page("game_tv.html" if query.get("view") == ["game"] else "board.html")
         if path == "/play":
             return self.page("play.html")
-        if path in ("/race.js", "/boat.js", "/boat3d.js", "/toot.js", "/vendor/three.module.min.js"):
+        if path in ("/race.js", "/boat.js", "/boat3d.js", "/toot.js", "/tug.js", "/vendor/three.module.min.js"):
             with open(os.path.join(HERE, "web", path[1:]), "rb") as f:
                 return self.send(200, f.read(), "text/javascript")
         if path == "/api/game/events":
@@ -510,6 +511,15 @@ class Handler(BaseHTTPRequestHandler):
             return GAMES.race_input(t, b)
         if action == "race/action":
             return GAMES.race_action(t, b.get("action"))
+        if action == "tug/tap":
+            return GAMES.tug_tap(t, b.get("n", 1))
+        if action == "tug/team":
+            return GAMES.tug_team(t, b.get("team"))
+        if action == "tug/rename":
+            # a player renames their own team; only the host phone (no token) can rename either
+            if not t and not self.is_local():
+                raise PermissionError("Join the game first")
+            return GAMES.tug_rename(b.get("team"), b.get("name", ""), t or None)
         if action == "boat/toot":
             return GAMES.boat_toot(t, b.get("seat", -1), b.get("power", 0.5))
         if action == "boat/hud":
@@ -526,7 +536,7 @@ class Handler(BaseHTTPRequestHandler):
             return GAMES.draw_edit(t, b["action"])
         # host only (other phones are stopped by PLAYER_POSTS in do_POST)
         if action == "open":
-            GAMES.open(b["mode"], b.get("settings"), b.get("words"), b.get("questions"))
+            GAMES.open(b["mode"], b.get("settings"), b.get("words"), b.get("questions"), b.get("teams"))
             shown = show_on_tv("game")
             return {"ok": True, "out": "Game open on the TV" if shown["ok"] else shown["out"]}
         if action == "show":

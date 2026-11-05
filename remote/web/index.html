@@ -168,6 +168,7 @@
     <button class="k" data-game="quiz">⚡ Quiz Buzzer<small>Fastest right answer wins · 1+ players</small></button>
     <button class="k" data-game="race">🏍️ Highway Brawl<small>Bike racing with punches · 1–4 players</small></button>
     <button class="k" data-game="boat">💨 Toot Boat<small>Steer one boat together · 1–4 players</small></button>
+    <button class="k" data-game="tug">🪢 Tug of War<small>Tap fast, two teams · 2–6 players</small></button>
   </div>
   <div id="drawSettings">
     <div class="setting">Turns each <select id="drawRounds"><option>1</option><option selected>2</option><option>3</option></select></div>
@@ -191,6 +192,14 @@
     <div class="setting">River length <select id="boatLength"><option value="1">Short</option><option value="2" selected>Medium</option><option value="3">Long</option></select></div>
     <p class="hint">Everyone shares one boat. Each player toots from their seat: together goes straight, alone turns.
       Playing alone? Join on this phone, or add computer crewmates and toot with the TV remote: hold ◀ ▶ ▲ and let go.</p>
+  </div>
+  <div id="tugSettings" style="display:none">
+    <div class="setting">Left team <input id="tugA" type="text" maxlength="18" value="Team Blue" style="width:55%"></div>
+    <div class="setting">Right team <input id="tugB" type="text" maxlength="18" value="Team Red" style="width:55%"></div>
+    <div class="setting">Win the match at <select id="tugFirst"><option value="1">1 round</option><option value="2" selected>2 rounds</option><option value="3">3 rounds</option></select></div>
+    <label class="setting"><span>Even out smaller teams</span><input id="tugBalance" type="checkbox" checked></label>
+    <div class="row"><button class="k" id="tugRename">Rename teams now</button></div>
+    <p class="hint">1–3 players a side. Players pick a side on their phone and can rename their own team in the lobby.</p>
   </div>
   <div class="row"><button class="k" id="gOpen" style="background:var(--accent)">Open on TV</button></div>
 
@@ -398,17 +407,24 @@ document.querySelectorAll('[data-game]').forEach(b => b.onclick = () => {
   $('#quizSettings').style.display = gMode === 'quiz' ? '' : 'none';
   $('#raceSettings').style.display = gMode === 'race' ? '' : 'none';
   $('#boatSettings').style.display = gMode === 'boat' ? '' : 'none';
+  $('#tugSettings').style.display = gMode === 'tug' ? '' : 'none';
 });
 document.querySelector('[data-game=draw]').classList.add('on');
 $('#gOpen').onclick = () => api('/api/game/open', { mode: gMode,
   settings: { draw_rounds: +$('#drawRounds').value, draw_seconds: +$('#drawSeconds').value, quiz_count: +$('#quizCount').value, quiz_seconds: +$('#quizSeconds').value,
-              race_laps: +$('#raceLaps').value, race_ai: +$('#raceAi').value, boat_length: +$('#boatLength').value, boat_bots: +$('#boatBots').value },
+              race_laps: +$('#raceLaps').value, race_ai: +$('#raceAi').value, boat_length: +$('#boatLength').value, boat_bots: +$('#boatBots').value,
+              tug_first_to: +$('#tugFirst').value, tug_balance: $('#tugBalance').checked ? 1 : 0 },
+  teams: { A: $('#tugA').value, B: $('#tugB').value },
   words: $('#words').value, questions: $('#questions').value }).then(j => { if (j.ok) { status(j.out); hostRefresh(); } });
+$('#tugRename').onclick = async () => {
+  for (const team of ['A', 'B']) await api('/api/game/tug/rename', { team, name: $('#tug' + team).value });
+  status('Team names updated');
+};
 $('#gStart').onclick = () => api('/api/game/start', {}).then(j => j.ok && status('Game started!'));
 $('#gSkip').onclick = () => api('/api/game/skip', {});
 $('#gShow').onclick = () => api('/api/game/show', {}).then(j => j.ok && status('Showing the game on the TV'));
 $('#gEnd').onclick = () => { if (confirm('End the game and remove all players?')) api('/api/game/end', {}).then(hostRefresh); };
-const PHASES = { boat: 'Boat trip on!', race: 'Race on!', lobby: 'Lobby: waiting for players', turn: 'Drawing…', question: 'Question on screen', reveal: 'Showing the answer', over: 'Game over: Start plays again' };
+const PHASES = { tug: 'Pulling!', boat: 'Boat trip on!', race: 'Race on!', lobby: 'Lobby: waiting for players', turn: 'Drawing…', question: 'Question on screen', reveal: 'Showing the answer', over: 'Game over: Start plays again' };
 let gFormLoaded = false;
 async function hostRefresh() {
   let v; try { v = await (await fetch('/api/game/host')).json(); } catch (e) { return; }
@@ -417,11 +433,12 @@ async function hostRefresh() {
   $('#gLive').style.display = live ? '' : 'none';
   if (!live) return;
   if (v.join_url && $('#gUrl').textContent !== v.join_url) { $('#gUrl').textContent = v.join_url; $('#gQr').src = '/api/game/qr.svg'; }
-  $('#gState').textContent = ({ draw: 'Draw & Guess · ', quiz: 'Quiz · ', race: 'Highway Brawl · ', boat: 'Toot Boat · ' }[v.mode] || '') + (PHASES[v.phase] || v.phase) + (v.seconds != null && v.phase !== 'reveal' ? ` · ${v.seconds}s` : '');
+  if (v.tug && document.activeElement !== $('#tugA') && document.activeElement !== $('#tugB')) { $('#tugA').value = v.tug.names.A; $('#tugB').value = v.tug.names.B; }
+  $('#gState').textContent = ({ draw: 'Draw & Guess · ', quiz: 'Quiz · ', race: 'Highway Brawl · ', boat: 'Toot Boat · ', tug: 'Tug of War · ' }[v.mode] || '') + (PHASES[v.phase] || v.phase) + (v.seconds != null && v.phase !== 'reveal' ? ` · ${v.seconds}s` : '');
   $('#gStart').textContent = v.phase === 'over' ? 'Play again' : 'Start';
   $('#gStart').disabled = !(v.phase === 'lobby' || v.phase === 'over');
-  $('#gSkip').disabled = !['turn', 'question', 'reveal', 'race', 'boat'].includes(v.phase);
-  $('#gSkip').textContent = v.phase === 'race' ? 'End race' : v.phase === 'boat' ? 'End trip' : 'Skip';
+  $('#gSkip').disabled = !['turn', 'question', 'reveal', 'race', 'boat', 'tug'].includes(v.phase);
+  $('#gSkip').textContent = v.phase === 'race' ? 'End race' : v.phase === 'boat' ? 'End trip' : v.phase === 'tug' ? 'End match' : 'Skip';
   const box = $('#gPlayers'); box.replaceChildren();
   if (!v.players.length) box.append(Object.assign(document.createElement('div'), { textContent: 'No one has joined yet.', style: 'color:var(--dim)' }));
   v.players.forEach(p => {
