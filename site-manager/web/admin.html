@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f3d3e">
+<title>Site Manager</title>
+<style>
+  :root { --bg:#f3f6f5; --card:#fff; --ink:#132020; --dim:#5d6d6c; --line:#e1e8e6; --brand:#0f766e; --brand-dk:#0f3d3e; --brand-lt:#ccfbf1;
+          --ok:#15803d; --ok-lt:#dcfce7; --warn:#b45309; --warn-lt:#fef3c7; --bad:#b91c1c; --bad-lt:#fee2e2; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  a { color:var(--brand); }
+  .layout { display:flex; min-height:100vh; }
+  nav { width:220px; background:var(--brand-dk); color:#dbeeed; padding:18px 12px; flex:none; display:flex; flex-direction:column; gap:2px; }
+  nav .logo { font-weight:800; font-size:19px; color:#fff; padding:4px 10px 4px; } nav .co { font-size:12px; opacity:.75; padding:0 10px 16px; }
+  nav button { text-align:left; background:none; border:0; color:inherit; font:inherit; padding:10px 12px; border-radius:10px; cursor:pointer; }
+  nav button.on, nav button:hover { background:rgba(255,255,255,.12); color:#fff; }
+  nav .me { margin-top:auto; font-size:13px; opacity:.85; padding:10px; }
+  main { flex:1; padding:22px 26px 60px; min-width:0; }
+  h1 { font-size:22px; margin:0 0 16px; } h2 { font-size:16px; margin:22px 0 10px; }
+  .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+  .bar .grow { flex:1; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:16px; }
+  .tile .n { font-size:28px; font-weight:800; } .tile .l { color:var(--dim); font-size:13px; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  th, td { padding:9px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; white-space:nowrap; }
+  th { background:#f8faf9; font-size:12px; color:var(--dim); text-transform:uppercase; letter-spacing:.03em; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  tr:last-child td { border-bottom:0; } tfoot td { font-weight:800; background:#f8faf9; }
+  .scroll { overflow-x:auto; border-radius:12px; }
+  button, .btn { font:inherit; border:1px solid var(--line); background:#fff; color:var(--ink); border-radius:10px; padding:8px 12px; cursor:pointer; text-decoration:none; display:inline-block; }
+  button.primary, .btn.primary { background:var(--brand); border-color:var(--brand); color:#fff; font-weight:700; }
+  button.danger { color:var(--bad); } button.small { padding:4px 9px; font-size:13px; }
+  button:disabled { opacity:.5; cursor:default; }
+  input, select, textarea { font:inherit; border:1px solid #cfd9d7; border-radius:9px; padding:8px 10px; background:#fff; color:var(--ink); }
+  input:focus, select:focus, textarea:focus { outline:2px solid var(--brand-lt); border-color:var(--brand); }
+  .form { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px 14px; }
+  .form label { display:flex; flex-direction:column; gap:4px; font-size:13px; color:var(--dim); font-weight:600; }
+  .form label.check { flex-direction:row; align-items:center; gap:8px; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:20px; font-size:12px; font-weight:700; }
+  .pill.ok { background:var(--ok-lt); color:var(--ok); } .pill.warn { background:var(--warn-lt); color:var(--warn); } .pill.bad { background:var(--bad-lt); color:var(--bad); } .pill.dim { background:#eef2f1; color:var(--dim); }
+  .grid-reg td { padding:4px 3px; text-align:center; font-size:12px; min-width:26px; cursor:pointer; }
+  .grid-reg td.name { text-align:left; cursor:default; position:sticky; left:0; background:#fff; min-width:150px; }
+  .m-P { background:var(--ok-lt); color:var(--ok); font-weight:700; } .m-H { background:#e0f2fe; color:#0369a1; font-weight:700; }
+  .m-A { color:#9aa9a7; } .m-F { background:var(--warn-lt); color:var(--warn); font-weight:800; } .m-X { background:var(--bad-lt); color:var(--bad); }
+  .flag { display:flex; gap:12px; align-items:center; padding:10px 0; border-bottom:1px solid var(--line); }
+  .flag img { width:54px; height:54px; object-fit:cover; border-radius:10px; background:#eee; cursor:zoom-in; }
+  .flag .info { flex:1; } .flag .why { color:var(--warn); font-weight:700; font-size:13px; }
+  dialog { border:0; border-radius:16px; padding:20px; max-width:min(760px, 94vw); width:100%; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+  dialog::backdrop { background:rgba(15,40,40,.45); }
+  #toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:var(--brand-dk); color:#fff; padding:10px 18px; border-radius:12px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:50; }
+  #toast.show { opacity:1; } #toast.bad { background:var(--bad); }
+  .auth { max-width:400px; margin:9vh auto; }
+  .auth h1 { text-align:center; } .auth .form { grid-template-columns:1fr; }
+  .tabs { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; } .tabs button.on { background:var(--brand); color:#fff; border-color:var(--brand); }
+  .muted { color:var(--dim); font-size:13px; }
+  #print { display:none; }
+  .poster { text-align:center; padding:30px; border:6px solid var(--brand-dk); border-radius:24px; max-width:640px; margin:0 auto; }
+  .poster h1 { font-size:40px; margin:6px 0; } .poster img { width:340px; height:340px; } .poster .steps { text-align:left; font-size:19px; margin:16px auto 0; max-width:480px; }
+  .slip { border:1px solid #999; border-radius:8px; padding:14px; margin:0 0 14px; page-break-inside:avoid; font-size:13px; }
+  .slip table { border:0; } .slip td { padding:3px 6px; border:0; }
+  @media (max-width: 760px) { .layout { flex-direction:column; } nav { width:auto; flex-direction:row; overflow-x:auto; padding:8px; } nav .co, nav .me { display:none; } nav .logo { padding:10px; } main { padding:16px; } }
+  @media print { .layout, dialog, #toast, .auth { display:none !important; } #print { display:block; } body { background:#fff; } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="print"></div>
+<dialog id="dlg"></dialog>
+<div id="toast"></div>
+<script>
+// ------------------------------------------------------------------ basics
+const $ = s => document.querySelector(s);
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k.startsWith('on')) el[k] = v; else if (k === 'class') el.className = v; else if (k === 'style') el.style.cssText = v;
+    else if (v === true) el.setAttribute(k, ''); else if (v !== false && v != null) el.setAttribute(k, v);
+  }
+  for (const c of kids.flat(Infinity)) if (c != null && c !== false) el.append(c.nodeType ? c : String(c));
+  return el;
+}
+let toastT;
+function toast(msg, bad) { const t = $('#toast'); t.textContent = msg; t.className = 'show' + (bad ? ' bad' : ''); clearTimeout(toastT); toastT = setTimeout(() => t.className = '', bad ? 5000 : 2200); }
+async function api(path, method = 'GET', body) {
+  const r = await fetch('/api' + path, { method, headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'site-manager' }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const j = r.headers.get('content-type', '').includes('json') ? await r.json() : await r.text();
+  if (r.status === 401 && path !== '/login') { me = null; boot(); throw new Error('Please log in'); }
+  if (!r.ok) { toast(j.error || 'Error ' + r.status, true); throw new Error(j.error); }
+  return j;
+}
+const rupee = n => '₹' + Math.round(n || 0).toLocaleString('en-IN');
+const today = () => new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);
+const thisMonth = () => today().slice(0, 7);
+const tm = iso => iso ? iso.slice(11, 16) : '—';
+function field(label, input) { return h('label', {}, label, input); }
+function val(form) { const o = {}; form.querySelectorAll('[name]').forEach(i => o[i.name] = i.type === 'checkbox' ? i.checked : i.value); return o; }
+function modal(...kids) { const d = $('#dlg'); d.replaceChildren(...kids); d.showModal(); return d; }
+function printOut(...nodes) { $('#print').replaceChildren(...nodes); setTimeout(() => window.print(), 150); }
+function waLink(phone, text) { let d = String(phone || '').replace(/\D/g, ''); if (d.length === 10) d = '91' + d; return d ? `https://wa.me/${d}?text=${encodeURIComponent(text)}` : null; }
+
+let me = null, sitesCache = [], view = 'dashboard';
+
+// ------------------------------------------------------------------ boot, setup and login
+async function boot() {
+  try { me = await (await fetch('/api/me')).json(); if (me.error) me = null; } catch (e) { me = null; }
+  if (!me) {
+    const st = await (await fetch('/api/status')).json();
+    return st.setup_needed ? setupScreen() : loginScreen(st.company);
+  }
+  sitesCache = await api('/sites');
+  shell();
+}
+function authForm(title, sub, fields, button, submit) {
+  const form = h('form', { class: 'form', onsubmit: async e => { e.preventDefault(); try { await submit(val(form)); boot(); } catch (err) {} } },
+    ...fields, h('button', { class: 'primary', type: 'submit' }, button));
+  $('#root').replaceChildren(h('div', { class: 'auth card' }, h('h1', {}, title), h('p', { class: 'muted', style: 'text-align:center' }, sub), form));
+}
+function setupScreen() {
+  authForm('Set up Site Manager', 'Create your company and the first admin login.', [
+    field('Company name', h('input', { name: 'company', required: true })), field('Your name', h('input', { name: 'name', required: true })),
+    field('Email', h('input', { name: 'email', type: 'email', required: true })), field('Password (8+ characters)', h('input', { name: 'password', type: 'password', minlength: 8, required: true }))],
+    'Create', b => api('/setup', 'POST', b));
+}
+function loginScreen(company) {
+  authForm(company || 'Site Manager', 'Log in to continue.', [
+    field('Email', h('input', { name: 'email', type: 'email', required: true, autocomplete: 'username' })),
+    field('Password', h('input', { name: 'password', type: 'password', required: true, autocomplete: 'current-password' }))],
+    'Log in', b => api('/login', 'POST', b));
+}
+
+// ------------------------------------------------------------------ layout
+const VIEWS = [
+  ['dashboard', 'Dashboard', true], ['attendance', 'Attendance', true], ['sites', 'Sites', true], ['workers', 'Workers', true],
+  ['advances', 'Advances', false], ['payroll', 'Payroll', false], ['reports', 'Site P&L & bills', false], ['settings', 'Settings', false],
+];
+function shell() {
+  const admin = me.role === 'admin';
+  const navEl = h('nav', {}, h('div', { class: 'logo' }, 'Site Manager'), h('div', { class: 'co' }, me.company),
+    VIEWS.filter(v => admin || v[2]).map(([k, label]) => h('button', { class: view === k ? 'on' : '', onclick: () => { view = k; shell(); } }, label)),
+    h('div', { class: 'me' }, me.name, ' · ', me.role, h('br'), h('a', { href: '#', style: 'color:#9de0d8', onclick: async e => { e.preventDefault(); await api('/logout', 'POST'); me = null; boot(); } }, 'Log out')));
+  const mainEl = h('main', {});
+  $('#root').replaceChildren(h('div', { class: 'layout' }, navEl, mainEl));
+  ({ dashboard, attendance, sites, workers, advances, payroll, reports, settings })[view](mainEl);
+}
+const siteName = id => (sitesCache.find(s => s.id === id) || {}).name || '—';
+function siteSelect(name, value, allowAll) {
+  return h('select', { name }, allowAll ? h('option', { value: '' }, 'All sites') : null,
+    sitesCache.filter(s => s.active).map(s => h('option', { value: s.id, selected: String(s.id) === String(value) }, s.name)));
+}
+
+// ------------------------------------------------------------------ dashboard
+async function dashboard(root) {
+  const date = h('input', { type: 'date', value: today(), onchange: () => load() });
+  const body = h('div', {});
+  root.append(h('div', { class: 'bar' }, h('h1', { style: 'margin:0' }, 'Dashboard'), h('span', { class: 'grow' }), date), body);
+  async function load() {
+    const d = await api('/dashboard?date=' + date.value);
+    const present = d.sites.reduce((s, x) => s + x.present, 0), now = d.sites.reduce((s, x) => s + x.on_site_now, 0);
+    body.replaceChildren(
+      h('div', { class: 'tiles' },
+        h('div', { class: 'card tile' }, h('div', { class: 'n' }, `${present} / ${d.active_workers}`), h('div', { class: 'l' }, 'Workers present')),
+        h('div', { class: 'card tile' }, h('div', { class: 'n' }, now), h('div', { class: 'l' }, 'On site now (not checked out)')),
+        h('div', { class: 'card tile' }, h('div', { class: 'n', style: d.flagged.length ? 'color:var(--warn)' : '' }, d.flagged.length), h('div', { class: 'l' }, 'Check-ins to review')),
+        h('div', { class: 'card tile' }, h('div', { class: 'n' }, rupee(d.sites.reduce((s, x) => s + x.wage_estimate, 0))), h('div', { class: 'l' }, "Today's wage bill (estimate)"))),
+      h('h2', {}, 'Sites'),
+      d.sites.length ? h('div', { class: 'scroll' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Site'), h('th', { class: 'num' }, 'Present'), h('th', { class: 'num' }, 'On site now'), h('th', { class: 'num' }, 'Flagged'), h('th', { class: 'num' }, 'Wages (est.)'))),
+        h('tbody', {}, d.sites.map(s => h('tr', {}, h('td', {}, s.site), h('td', { class: 'num' }, s.present), h('td', { class: 'num' }, s.on_site_now),
+          h('td', { class: 'num' }, s.flagged ? h('span', { class: 'pill warn' }, s.flagged) : 0), h('td', { class: 'num' }, rupee(s.wage_estimate)))))))
+        : h('p', { class: 'muted' }, 'No sites yet. Add one under Sites.'),
+      h('h2', {}, 'Flagged check-ins'),
+      h('div', { class: 'card' }, d.flagged.length ? d.flagged.map(f => flagRow(f, load)) : h('p', { class: 'muted', style: 'margin:0' }, 'Nothing to review. 👍')));
+  }
+  load();
+}
+function flagRow(f, reload) {
+  const img = f.has_selfie ? h('img', { src: `/api/attendance/${f.id}/selfie`, alt: 'selfie', onclick: () => modal(h('img', { src: `/api/attendance/${f.id}/selfie`, style: 'max-width:100%;border-radius:12px' }), h('p', {}, h('button', { onclick: () => $('#dlg').close() }, 'Close'))) }) : h('img', { alt: '' });
+  const act = review => api(`/attendance/${f.id}`, 'PUT', { review }).then(() => { toast(review === 'approved' ? 'Approved: counted for payroll' : 'Rejected: not counted'); reload(); });
+  return h('div', { class: 'flag' }, img, h('div', { class: 'info' }, h('b', {}, f.name), ' ', h('span', { class: 'muted' }, f.code), h('div', { class: 'muted' }, `${f.site} · ${f.day} ${tm(f.in_time)}`), h('div', { class: 'why' }, f.flag_reason)),
+    h('button', { class: 'small', onclick: () => act('approved') }, 'Approve'), h('button', { class: 'small danger', onclick: () => act('rejected') }, 'Reject'));
+}
+
+// ------------------------------------------------------------------ attendance
+async function attendance(root) {
+  let tab = 'today';
+  const tabs = h('div', { class: 'tabs' }), body = h('div', {});
+  root.append(h('h1', {}, 'Attendance'), tabs, body);
+  const show = () => {
+    tabs.replaceChildren(...[['today', 'Day list'], ['register', 'Monthly register'], ['mark', 'Mark attendance']].map(([k, l]) => h('button', { class: tab === k ? 'on' : '', onclick: () => { tab = k; show(); } }, l)));
+    body.replaceChildren(); ({ today: dayList, register, mark: markView })[tab](body);
+  };
+  show();
+}
+async function dayList(root) {
+  const date = h('input', { type: 'date', value: today(), onchange: () => load() }), out = h('div', {});
+  root.append(h('div', { class: 'bar' }, date), out);
+  async function load() {
+    const recs = await api('/attendance?date=' + date.value);
+    out.replaceChildren(recs.length ? h('div', { class: 'scroll' }, h('table', {},
+      h('thead', {}, h('tr', {}, ['Worker', 'Site', 'In', 'Out', 'Distance', 'By', 'Status', 'OT hrs', 'Review', ''].map(x => h('th', {}, x)))),
+      h('tbody', {}, recs.map(r => {
+        const st = h('select', { onchange: () => api(`/attendance/${r.id}`, 'PUT', { status: st.value }).then(() => toast('Saved')) }, ['P', 'H', 'A'].map(x => h('option', { value: x, selected: r.status === x }, { P: 'Present', H: 'Half day', A: 'Absent' }[x])));
+        const ot = h('input', { type: 'number', step: '0.5', min: 0, style: 'width:70px', placeholder: 'auto', value: r.ot_override ?? '', onchange: () => api(`/attendance/${r.id}`, 'PUT', { ot_override: ot.value }).then(() => toast('Saved')) });
+        const pill = { ok: ['ok', 'OK'], flagged: ['warn', 'Flagged'], approved: ['ok', 'Approved'], rejected: ['bad', 'Rejected'] }[r.review];
+        return h('tr', {}, h('td', {}, h('b', {}, r.name), ' ', h('span', { class: 'muted' }, r.code)), h('td', {}, r.site), h('td', {}, tm(r.in_time)), h('td', {}, tm(r.out_time)),
+          h('td', {}, r.in_dist != null ? r.in_dist + ' m' : '—'), h('td', {}, r.method === 'qr' ? 'QR scan' : 'Supervisor'), h('td', {}, st), h('td', {}, ot),
+          h('td', {}, h('span', { class: 'pill ' + pill[0], title: r.flag_reason || '' }, pill[1])),
+          h('td', {}, r.selfie ? h('a', { href: `/api/attendance/${r.id}/selfie`, target: '_blank' }, 'Selfie') : ''));
+      })))) : h('p', { class: 'muted' }, 'No attendance for this day.'));
+  }
+  load();
+}
+async function register(root) {
+  const month = h('input', { type: 'month', value: thisMonth(), onchange: () => load() }), site = siteSelect('site', '', true), out = h('div', {});
+  site.onchange = () => load();
+  root.append(h('div', { class: 'bar' }, month, site, h('span', { class: 'muted' }, 'P present · H half day · F flagged · X rejected · click a day to change it')), out);
+  async function load() {
+    const r = await api(`/register?month=${month.value}${site.value ? '&site=' + site.value : ''}`);
+    const days = Array.from({ length: r.days }, (_, i) => String(i + 1).padStart(2, '0'));
+    out.replaceChildren(h('div', { class: 'scroll' }, h('table', { class: 'grid-reg' },
+      h('thead', {}, h('tr', {}, h('th', { class: 'name' }, 'Worker'), days.map(d => h('th', {}, +d)), h('th', {}, 'Days'), h('th', {}, 'OT'))),
+      h('tbody', {}, r.workers.map(w => {
+        const g = r.grid[w.id] || {};
+        let total = 0, ot = 0;
+        const cells = days.map(d => {
+          const c = g[d]; const mark = c ? c.mark : '';
+          if (mark === 'P') total += 1; if (mark === 'H') total += 0.5; if (c) ot += c.ot || 0;
+          return h('td', { class: 'm-' + (mark || 'A'), title: c && c.ot ? `OT ${c.ot} h` : '', onclick: () => cellEdit(w, `${month.value}-${d}`, c, load) }, mark || '·');
+        });
+        return h('tr', {}, h('td', { class: 'name' }, h('b', {}, w.name), ' ', h('span', { class: 'muted' }, w.code)), cells, h('td', {}, total), h('td', {}, ot));
+      })))));
+  }
+  load();
+}
+function cellEdit(w, day, cell, reload) {
+  const set = async (status) => {
+    if (cell) await api(`/attendance/${cell.id}`, 'PUT', { status, review: 'approved' });
+    else await api('/attendance/mark', 'POST', { site_id: w.site_id || (sitesCache[0] || {}).id, worker_ids: [w.id], date: day, status });
+    $('#dlg').close(); toast('Saved'); reload();
+  };
+  modal(h('h2', { style: 'margin-top:0' }, `${w.name} · ${day}`), cell && cell.mark === 'F' ? h('p', { class: 'muted' }, 'This check-in was flagged. Choosing a status approves it.') : null,
+    h('div', { class: 'bar' }, h('button', { onclick: () => set('P') }, 'Present'), h('button', { onclick: () => set('H') }, 'Half day'), h('button', { onclick: () => set('A') }, 'Absent'),
+      cell ? h('button', { class: 'danger', onclick: async () => { await api(`/attendance/${cell.id}`, 'PUT', { review: 'rejected' }); $('#dlg').close(); reload(); } }, 'Reject') : null,
+      h('span', { class: 'grow' }), h('button', { onclick: () => $('#dlg').close() }, 'Cancel')));
+}
+async function markView(root) {
+  const site = siteSelect('site', (sitesCache.find(s => s.active) || {}).id), list = h('div', {}), date = h('input', { type: 'date', value: today() });
+  root.append(h('p', { class: 'muted' }, 'For workers without a smartphone, or to correct a day. Your own location is recorded with the entry.'),
+    h('div', { class: 'bar' }, site, date), list);
+  const workersAll = await api('/workers');
+  let gps = null;
+  if (navigator.geolocation) navigator.geolocation.getCurrentPosition(p => gps = p.coords, () => {}, { enableHighAccuracy: true, timeout: 15000 });
+  const draw = () => {
+    const ws = workersAll.filter(w => w.active && (!w.site_id || String(w.site_id) === site.value));
+    const boxes = ws.map(w => h('input', { type: 'checkbox', value: w.id }));
+    const send = async (action, status) => {
+      const ids = boxes.filter(b => b.checked).map(b => +b.value);
+      if (!ids.length) return toast('Tick at least one worker', true);
+      const r = await api('/attendance/mark', 'POST', { site_id: +site.value, worker_ids: ids, date: date.value, action, status, lat: gps && gps.latitude, lng: gps && gps.longitude });
+      toast(`Marked ${r.marked} worker(s)`); boxes.forEach(b => b.checked = false);
+    };
+    list.replaceChildren(ws.length ? h('div', {},
+      h('div', { class: 'bar' }, h('button', { onclick: () => boxes.forEach(b => b.checked = true) }, 'Select all'),
+        h('button', { class: 'primary', onclick: () => send('in') }, 'Check in'), h('button', { onclick: () => send('out') }, 'Check out'),
+        h('button', { onclick: () => send(null, 'H') }, 'Half day'), h('button', { class: 'danger', onclick: () => send(null, 'A') }, 'Absent')),
+      h('table', {}, h('tbody', {}, ws.map((w, i) => h('tr', {}, h('td', { style: 'width:36px' }, boxes[i]), h('td', {}, h('b', {}, w.name)), h('td', { class: 'muted' }, w.code), h('td', { class: 'muted' }, w.designation))))))
+      : h('p', { class: 'muted' }, 'No workers assigned to this site.'));
+  };
+  site.onchange = draw; draw();
+}
+
+// ------------------------------------------------------------------ sites
+async function sites(root) {
+  const admin = me.role === 'admin';
+  sitesCache = await api('/sites');
+  root.append(h('div', { class: 'bar' }, h('h1', { style: 'margin:0' }, 'Sites'), h('span', { class: 'grow' }), admin ? h('button', { class: 'primary', onclick: () => siteForm() }, '+ Add site') : null),
+    sitesCache.length ? h('div', { class: 'scroll' }, h('table', {}, h('thead', {}, h('tr', {}, ['Site', 'Client', 'Geo-fence', 'Bill rate / day', '', ''].map(x => h('th', {}, x)))),
+      h('tbody', {}, sitesCache.map(s => h('tr', {}, h('td', {}, h('b', {}, s.name), s.active ? '' : h('span', { class: 'pill dim', style: 'margin-left:6px' }, 'inactive')),
+        h('td', {}, s.client || '—'), h('td', {}, s.lat != null ? `${s.radius_m} m around ${(+s.lat).toFixed(4)}, ${(+s.lng).toFixed(4)}` : h('span', { class: 'pill warn' }, 'no location set')),
+        h('td', {}, s.bill_rate ? rupee(s.bill_rate) : '—'),
+        h('td', {}, h('button', { class: 'small', onclick: () => poster(s) }, 'QR poster')),
+        h('td', {}, admin ? h('button', { class: 'small', onclick: () => siteForm(s) }, 'Edit') : null))))))
+      : h('p', { class: 'muted' }, 'Add your first site, then print its QR poster for the gate.'));
+}
+function siteForm(s = {}) {
+  const form = h('form', { class: 'form' },
+    field('Site name', h('input', { name: 'name', value: s.name || '', required: true })), field('Client', h('input', { name: 'client', value: s.client || '' })),
+    field('Address', h('input', { name: 'address', value: s.address || '' })),
+    field('Latitude', h('input', { name: 'lat', value: s.lat ?? '', placeholder: 'e.g. 28.6139' })), field('Longitude', h('input', { name: 'lng', value: s.lng ?? '', placeholder: 'e.g. 77.2090' })),
+    field('Geo-fence radius (metres)', h('input', { name: 'radius_m', type: 'number', min: 50, value: s.radius_m || 200 })),
+    field('Bill rate per manday (₹)', h('input', { name: 'bill_rate', type: 'number', min: 0, value: s.bill_rate || '' })),
+    field('Bill rate per OT hour (₹)', h('input', { name: 'bill_ot_rate', type: 'number', min: 0, value: s.bill_ot_rate || '' })),
+    s.id ? h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'active', checked: !!s.active }), 'Active') : null);
+  const here = h('button', { type: 'button', onclick: () => {
+    if (!navigator.geolocation) return toast('This browser has no location', true);
+    toast('Getting your location…');
+    navigator.geolocation.getCurrentPosition(p => { form.lat.value = p.coords.latitude.toFixed(6); form.lng.value = p.coords.longitude.toFixed(6); toast(`Location set (±${Math.round(p.coords.accuracy)} m)`); },
+      () => toast('Could not get location (it needs https and permission)', true), { enableHighAccuracy: true, timeout: 15000 });
+  } }, '📍 Use my current location (stand at the gate)');
+  modal(h('h2', { style: 'margin-top:0' }, s.id ? 'Edit site' : 'Add site'), form, h('p', {}, here),
+    h('div', { class: 'bar' }, s.id ? h('button', { class: 'danger', onclick: async () => { if (confirm('Make a new QR code? The old poster will stop working.')) { await api(`/sites/${s.id}/rotate-qr`, 'POST'); toast('New QR code made. Print the new poster.'); } } }, 'Replace QR code') : null,
+      h('span', { class: 'grow' }), h('button', { onclick: () => $('#dlg').close() }, 'Cancel'),
+      h('button', { class: 'primary', onclick: async () => { const b = val(form); if (!b.name) return toast('Name is required', true);
+        await api(s.id ? `/sites/${s.id}` : '/sites', s.id ? 'PUT' : 'POST', b); $('#dlg').close(); toast('Saved'); shell(); } }, 'Save')));
+}
+function poster(s) {
+  const src = `/api/sites/${s.id}/qr.svg?base=${encodeURIComponent(location.origin)}`;
+  const node = h('div', { class: 'poster' }, h('div', { style: 'font-size:20px;color:#555' }, me.company), h('h1', {}, s.name), h('img', { src, alt: 'QR code' }),
+    h('div', { style: 'font-size:26px;font-weight:800;margin-top:6px' }, 'Scan to mark attendance · हाज़िरी के लिए स्कैन करें'),
+    h('ol', { class: 'steps' }, h('li', {}, 'Open your phone camera and scan this code. / फ़ोन का कैमरा खोलें और यह कोड स्कैन करें।'),
+      h('li', {}, 'Enter your worker code and PIN. / अपना वर्कर कोड और PIN डालें।'), h('li', {}, 'Take a selfie and tap Mark attendance. / सेल्फ़ी लें और "हाज़िरी लगाएँ" दबाएँ।'),
+      h('li', {}, 'No smartphone? Ask the supervisor. / स्मार्टफ़ोन नहीं? सुपरवाइज़र से कहें।')));
+  modal(h('div', { style: 'transform:scale(.8);transform-origin:top center;margin-bottom:-120px' }, node.cloneNode(true)),
+    h('div', { class: 'bar' }, h('span', { class: 'grow' }), h('button', { onclick: () => $('#dlg').close() }, 'Close'), h('button', { class: 'primary', onclick: () => { $('#dlg').close(); printOut(node); } }, 'Print poster')));
+}
+
+// ------------------------------------------------------------------ workers
+async function workers(root) {
+  const admin = me.role === 'admin';
+  const list = await api('/workers');
+  const search = h('input', { placeholder: 'Search name, code, phone', oninput: () => draw() }), out = h('div', {});
+  root.append(h('div', { class: 'bar' }, h('h1', { style: 'margin:0' }, 'Workers'), h('span', { class: 'muted' }, `${list.filter(w => w.active).length} active`), h('span', { class: 'grow' }), search,
+    admin ? h('button', { onclick: importDlg }, 'Import from Excel/CSV') : null, admin ? h('button', { class: 'primary', onclick: () => workerForm() }, '+ Add worker') : null), out);
+  function draw() {
+    const qs = search.value.toLowerCase();
+    const ws = list.filter(w => !qs || [w.name, w.code, w.phone].some(x => (x || '').toLowerCase().includes(qs)));
+    out.replaceChildren(h('div', { class: 'scroll' }, h('table', {}, h('thead', {}, h('tr', {}, ['Code', 'Name', 'Designation', 'Site', admin ? 'Wage' : null, 'PIN', admin ? 'PF / ESIC' : null, ''].filter(Boolean).map(x => h('th', {}, x)))),
+      h('tbody', {}, ws.map(w => h('tr', { style: w.active ? '' : 'opacity:.5' }, h('td', {}, w.code), h('td', {}, h('b', {}, w.name), h('div', { class: 'muted' }, w.phone)), h('td', {}, w.designation || '—'),
+        h('td', {}, w.site_id ? siteName(w.site_id) : '—'), admin ? h('td', {}, `${rupee(w.rate)} / ${w.wage_type === 'monthly' ? 'month' : 'day'}`) : null,
+        h('td', {}, w.has_pin ? h('span', { class: 'pill ok' }, 'set') : h('span', { class: 'pill warn' }, 'not set')),
+        admin ? h('td', {}, [w.pf_member ? 'PF' : null, w.esic_member ? 'ESIC' : null].filter(Boolean).join(' · ') || '—') : null,
+        h('td', {}, admin ? h('button', { class: 'small', onclick: () => workerForm(w) }, 'Edit') : null)))))));
+  }
+  draw();
+}
+function workerForm(w = { wage_type: 'daily', pf_member: 1, esic_member: 1, active: 1 }) {
+  const form = h('form', { class: 'form' },
+    field('Worker code (blank = automatic)', h('input', { name: 'code', value: w.code || '' })), field('Full name', h('input', { name: 'name', value: w.name || '', required: true })),
+    field('Phone (for WhatsApp slips)', h('input', { name: 'phone', value: w.phone || '', inputmode: 'tel' })), field('Designation', h('input', { name: 'designation', value: w.designation || '', placeholder: 'Fitter, Helper…' })),
+    field('Usual site', siteSelect('site_id', w.site_id, true)),
+    field('Wage type', h('select', { name: 'wage_type' }, h('option', { value: 'daily', selected: w.wage_type === 'daily' }, 'Daily rate'), h('option', { value: 'monthly', selected: w.wage_type === 'monthly' }, 'Monthly salary'))),
+    field('Rate (₹ per day or per month)', h('input', { name: 'rate', type: 'number', min: 0, value: w.rate || '' })),
+    field(w.has_pin ? 'New 4-digit PIN (blank = keep)' : '4-digit check-in PIN', h('input', { name: 'pin', inputmode: 'numeric', maxlength: 4, pattern: '\\d{4}' })),
+    field('UAN (12 digits)', h('input', { name: 'uan', value: w.uan || '' })), field('ESIC number', h('input', { name: 'esic_no', value: w.esic_no || '' })),
+    field('Bank account number', h('input', { name: 'bank_account', value: w.bank_account || '' })), field('IFSC', h('input', { name: 'ifsc', value: w.ifsc || '', placeholder: 'SBIN0001234' })),
+    field('Aadhaar (last 4 digits only)', h('input', { name: 'aadhaar_last4', value: w.aadhaar_last4 || '', maxlength: 4 })), field('Date joined', h('input', { name: 'joined', type: 'date', value: w.joined || '' })),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'pf_member', checked: !!w.pf_member }), 'PF member'),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'esic_member', checked: !!w.esic_member }), 'ESIC member'),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'active', checked: !!w.active }), 'Active'));
+  modal(h('h2', { style: 'margin-top:0' }, w.id ? 'Edit worker' : 'Add worker'), form,
+    h('div', { class: 'bar', style: 'margin-top:14px' }, h('span', { class: 'grow' }), h('button', { onclick: () => $('#dlg').close() }, 'Cancel'),
+      h('button', { class: 'primary', onclick: async () => { const b = val(form); await api(w.id ? `/workers/${w.id}` : '/workers', w.id ? 'PUT' : 'POST', b); $('#dlg').close(); toast('Saved'); shell(); } }, 'Save')));
+}
+function importDlg() {
+  const ta = h('textarea', { rows: 10, style: 'width:100%;font-family:monospace', placeholder: 'code,name,phone,designation,site,wage_type,rate,uan,esic_no,bank_account,ifsc,pin' });
+  const file = h('input', { type: 'file', accept: '.csv,text/csv', onchange: async () => { ta.value = await file.files[0].text(); } });
+  const template = 'code,name,phone,designation,site,wage_type,rate,uan,esic_no,bank_account,ifsc,pin,pf_member,esic_member\nW0101,Ramesh Kumar,9876543210,Fitter,Metro Depot,daily,650,100012345678,,12345678901,SBIN0001234,1234,yes,yes\n';
+  modal(h('h2', { style: 'margin-top:0' }, 'Import workers'),
+    h('p', { class: 'muted' }, 'In Excel: File → Save As → CSV. The first row must be the column names below; "site" must match a site name. Rows with an existing code update that worker.'),
+    h('p', {}, h('a', { href: 'data:text/csv;charset=utf-8,' + encodeURIComponent(template), download: 'workers-template.csv' }, 'Download the template'), '  ·  ', file), ta,
+    h('div', { class: 'bar', style: 'margin-top:12px' }, h('span', { class: 'grow' }), h('button', { onclick: () => $('#dlg').close() }, 'Cancel'),
+      h('button', { class: 'primary', onclick: async () => { const r = await api('/workers/import', 'POST', { csv: ta.value });
+        $('#dlg').close(); toast(`Added ${r.added}, updated ${r.updated}` + (r.errors.length ? `, ${r.errors.length} rows had problems` : ''), r.errors.length > 0);
+        if (r.errors.length) setTimeout(() => modal(h('h2', {}, 'Rows not imported'), h('pre', {}, r.errors.join('\n')), h('button', { onclick: () => { $('#dlg').close(); shell(); } }, 'OK')), 400); else shell(); } }, 'Import')));
+}
+
+// ------------------------------------------------------------------ advances
+async function advances(root) {
+  const month = h('input', { type: 'month', value: thisMonth(), onchange: () => load() }), out = h('div', {});
+  const ws = await api('/workers');
+  const form = h('form', { class: 'form', style: 'margin-bottom:14px' },
+    field('Worker', h('select', { name: 'worker_id' }, ws.filter(w => w.active).map(w => h('option', { value: w.id }, `${w.name} (${w.code})`)))),
+    field('Amount (₹)', h('input', { name: 'amount', type: 'number', min: 1, required: true })), field('Date', h('input', { name: 'date', type: 'date', value: today() })),
+    field('Note', h('input', { name: 'note' })));
+  root.append(h('h1', {}, 'Advances'), h('p', { class: 'muted' }, "Advances given in a month are recovered from that month's pay (up to the net pay; anything left is shown as carried)."),
+    h('div', { class: 'card' }, form, h('button', { class: 'primary', onclick: async () => { const b = val(form); if (!(+b.amount > 0)) return toast('Enter an amount', true);
+      await api('/advances', 'POST', b); toast('Advance recorded'); form.amount.value = ''; form.note.value = ''; load(); } }, 'Add advance')),
+    h('div', { class: 'bar', style: 'margin-top:16px' }, month), out);
+  async function load() {
+    const list = await api('/advances?month=' + month.value);
+    out.replaceChildren(list.length ? h('table', {}, h('thead', {}, h('tr', {}, ['Date', 'Worker', 'Note', 'Amount', ''].map(x => h('th', {}, x)))),
+      h('tbody', {}, list.map(a => h('tr', {}, h('td', {}, a.day), h('td', {}, `${a.name} (${a.code})`), h('td', {}, a.note), h('td', { class: 'num' }, rupee(a.amount)),
+        h('td', {}, h('button', { class: 'small danger', onclick: async () => { if (confirm('Delete this advance?')) { await api(`/advances/${a.id}`, 'DELETE'); load(); } } }, 'Delete'))))),
+      h('tfoot', {}, h('tr', {}, h('td', { colspan: 3 }, 'Total'), h('td', { class: 'num' }, rupee(list.reduce((s, a) => s + a.amount, 0))), h('td', {}))))
+      : h('p', { class: 'muted' }, 'No advances this month.'));
+  }
+  load();
+}
+
+// ------------------------------------------------------------------ payroll
+async function payroll(root) {
+  const month = h('input', { type: 'month', value: thisMonth(), onchange: () => load() }), out = h('div', {});
+  root.append(h('div', { class: 'bar' }, h('h1', { style: 'margin:0' }, 'Payroll'), h('span', { class: 'grow' }), month), out);
+  async function load() {
+    const p = await api('/payroll/' + month.value);
+    const final = p.status === 'final', has = p.status !== 'none';
+    const t = p.totals;
+    out.replaceChildren(
+      h('div', { class: 'bar' },
+        h('span', { class: 'pill ' + (final ? 'ok' : has ? 'warn' : 'dim') }, final ? 'Finalized' : has ? 'Draft' : 'Not run yet'),
+        !final ? h('button', { class: 'primary', onclick: async () => { await api(`/payroll/${month.value}/run`, 'POST'); toast('Payroll worked out from verified attendance'); load(); } }, has ? 'Re-run payroll' : 'Run payroll') : null,
+        has && !final ? h('button', { onclick: async () => { if (confirm('Finalize this payroll? It will be locked.')) { await api(`/payroll/${month.value}/finalize`, 'POST'); load(); } } }, 'Finalize') : null,
+        final ? h('button', { onclick: async () => { await api(`/payroll/${month.value}/reopen`, 'POST'); load(); } }, 'Reopen') : null,
+        h('span', { class: 'grow' }),
+        has ? [h('a', { class: 'btn', href: `/api/payroll/${month.value}/bank.csv` }, '⬇ Bank NEFT file'), h('a', { class: 'btn', href: `/api/payroll/${month.value}/ecr.txt` }, '⬇ EPFO ECR'),
+          h('a', { class: 'btn', href: `/api/payroll/${month.value}/form17.csv` }, '⬇ Form XVII (CSV)'), h('button', { onclick: () => form17Print(month.value, p.lines) }, '🖨 Form XVII'),
+          h('button', { class: 'primary', onclick: () => slipsView(month.value) }, 'Salary slips')] : null),
+      has ? h('div', { class: 'tiles' },
+        h('div', { class: 'card tile' }, h('div', { class: 'n' }, rupee(t.net)), h('div', { class: 'l' }, `Net to bank · ${t.workers} workers`)),
+        h('div', { class: 'card tile' }, h('div', { class: 'n' }, rupee(t.gross)), h('div', { class: 'l' }, 'Gross wages')),
+        h('div', { class: 'card tile' }, h('div', { class: 'n' }, rupee(t.pf_employee + t.eps_employer + t.epf_employer)), h('div', { class: 'l' }, 'PF to deposit (employee + employer)')),
+        h('div', { class: 'card tile' }, h('div', { class: 'n' }, rupee(t.esic_employee + t.esic_employer)), h('div', { class: 'l' }, 'ESIC to deposit')),
+        h('div', { class: 'card tile' }, h('div', { class: 'n' }, rupee(t.company_cost)), h('div', { class: 'l' }, 'Total cost to company'))) : h('p', { class: 'muted' }, 'Run the payroll to work out wages from approved attendance. Flagged check-ins are left out until you approve them.'),
+      has ? h('div', { class: 'scroll' }, h('table', {},
+        h('thead', {}, h('tr', {}, ['Code', 'Name', 'Days', 'OT h', 'Basic', 'OT pay', 'Gross', 'PF', 'ESIC', 'Advance', 'Net', 'Bank'].map((x, i) => h('th', { class: i > 1 ? 'num' : '' }, x)))),
+        h('tbody', {}, p.lines.map(l => h('tr', {}, h('td', {}, l.code), h('td', {}, l.name), ...[l.days, l.ot_hours].map(x => h('td', { class: 'num' }, x)),
+          ...[l.basic, l.ot_pay, l.gross, l.pf_employee, l.esic_employee, l.advance, l.net].map(x => h('td', { class: 'num' }, rupee(x))),
+          h('td', {}, l.bank_account && l.ifsc ? h('span', { class: 'pill ok' }, 'ok') : h('span', { class: 'pill bad', title: 'Add bank account and IFSC, or pay by cash' }, 'missing'))))),
+        h('tfoot', {}, h('tr', {}, h('td', { colspan: 2 }, 'Total'), h('td', { class: 'num' }, t.days), h('td', { class: 'num' }, t.ot_hours),
+          ...[t.basic, t.ot_pay, t.gross, t.pf_employee, t.esic_employee, t.advance, t.net].map(x => h('td', { class: 'num' }, rupee(x))), h('td', {}))))) : null,
+      has ? h('p', { class: 'muted' }, 'Check the PF/ESIC rates and wage ceilings under Settings against current EPFO/ESIC rules, and validate the ECR file on the EPFO portal before submitting. Map the bank file columns to your bank\'s bulk-upload template.') : null);
+  }
+  load();
+}
+async function slipsView(month) {
+  let lang = 'en';
+  const out = h('div', {});
+  const draw = async () => {
+    const d = await api(`/payroll/${month}/slips?lang=${lang}`);
+    out.replaceChildren(h('div', { class: 'scroll' }, h('table', {}, h('tbody', {}, d.slips.map(s => {
+      const link = waLink(s.phone, s.text);
+      return h('tr', {}, h('td', {}, h('b', {}, s.name), ' ', h('span', { class: 'muted' }, s.code)), h('td', { class: 'num' }, rupee(s.net)),
+        h('td', {}, link ? h('a', { class: 'btn primary', href: link, target: '_blank', rel: 'noopener' }, 'Send on WhatsApp') : h('span', { class: 'muted' }, 'no phone')));
+    })))));
+    printBtn.onclick = () => printOut(...d.slips.map(s => slipCard(s, d)));
+  };
+  const printBtn = h('button', {}, '🖨 Print all slips');
+  modal(h('div', { class: 'bar' }, h('h2', { style: 'margin:0' }, `Salary slips · ${month}`), h('span', { class: 'grow' }),
+      h('select', { onchange: e => { lang = e.target.value; draw(); } }, h('option', { value: 'en' }, 'English'), h('option', { value: 'hi' }, 'हिंदी')), printBtn),
+    h('p', { class: 'muted' }, 'Each button opens WhatsApp with the slip typed out; tap send. It is sent from your own WhatsApp.'), out,
+    h('div', { class: 'bar', style: 'margin-top:12px' }, h('span', { class: 'grow' }), h('button', { onclick: () => $('#dlg').close() }, 'Close')));
+  draw();
+}
+function slipCard(s, d) {
+  const row = (a, b) => h('tr', {}, h('td', {}, a), h('td', { class: 'num' }, b));
+  return h('div', { class: 'slip' }, h('b', {}, d.company), h('div', { class: 'muted' }, d.address), h('div', { style: 'margin:6px 0' }, `Salary slip · ${d.month} · ${s.name} (${s.code}) · ${s.designation}`),
+    h('table', {}, row('Days worked', s.days), row('Overtime hours', s.ot_hours), row('Basic', rupee(s.basic)), row('Overtime pay', rupee(s.ot_pay)), row('Gross', rupee(s.gross)),
+      row('PF (employee)', '−' + rupee(s.pf_employee)), row('ESIC (employee)', '−' + rupee(s.esic_employee)), row('Advance recovered', '−' + rupee(s.advance)),
+      h('tr', {}, h('td', {}, h('b', {}, 'Net pay')), h('td', { class: 'num' }, h('b', {}, rupee(s.net))))),
+    h('div', { class: 'muted' }, `UAN ${s.uan || '—'} · ESIC ${s.esic_no || '—'} · Bank ${s.bank_account ? '··' + s.bank_account.slice(-4) : '—'}`));
+}
+function form17Print(month, lines) {
+  const head = ['Sl', 'Name', 'Sr. in register', 'Designation', 'Days', 'Rate', 'Basic', 'DA', 'OT', 'Other', 'Total', 'PF', 'ESIC', 'Advance', 'Deductions', 'Net', 'Signature'];
+  printOut(h('div', { style: 'font-size:11px' }, h('h2', {}, 'FORM XVII · Register of Wages'), h('div', {}, `${me.company} · Wage period: ${month}`),
+    h('table', { style: 'margin-top:10px' }, h('thead', {}, h('tr', {}, head.map(x => h('th', {}, x)))),
+      h('tbody', {}, lines.map((l, i) => h('tr', {}, [i + 1, l.name, l.code, l.designation, l.days, `${l.rate}/${l.wage_type === 'monthly' ? 'mo' : 'day'}`, l.basic, 0, l.ot_pay, 0, l.gross,
+        l.pf_employee, l.esic_employee, l.advance, l.pf_employee + l.esic_employee + l.advance, l.net, ''].map(x => h('td', {}, x))))))));
+}
+
+// ------------------------------------------------------------------ reports
+async function reports(root) {
+  const month = h('input', { type: 'month', value: thisMonth(), onchange: () => load() }), out = h('div', {});
+  root.append(h('div', { class: 'bar' }, h('h1', { style: 'margin:0' }, 'Site P&L & client bills'), h('span', { class: 'grow' }), month),
+    h('p', { class: 'muted' }, 'Labour cost is each worker\'s wages plus employer PF and ESIC, split by the days they worked at each site. Bills use each site\'s bill rates (set them under Sites).'), out);
+  async function load() {
+    const r = await api('/reports/sites?month=' + month.value);
+    out.replaceChildren(r.sites.length ? h('div', { class: 'scroll' }, h('table', {},
+      h('thead', {}, h('tr', {}, ['Site', 'Client', 'Mandays', 'OT h', 'Labour cost', 'Bill (before GST)', 'Margin', ''].map((x, i) => h('th', { class: i > 1 && i < 7 ? 'num' : '' }, x)))),
+      h('tbody', {}, r.sites.map(s => h('tr', {}, h('td', {}, h('b', {}, s.site)), h('td', {}, s.client || '—'), h('td', { class: 'num' }, s.mandays), h('td', { class: 'num' }, s.ot_hours),
+        h('td', { class: 'num' }, rupee(s.labour_cost)), h('td', { class: 'num' }, s.bill ? rupee(s.bill) : h('span', { class: 'muted' }, 'set bill rate')),
+        h('td', { class: 'num', style: s.margin < 0 ? 'color:var(--bad);font-weight:700' : 'color:var(--ok);font-weight:700' }, s.bill ? rupee(s.margin) : '—'),
+        h('td', {}, s.bill ? h('button', { class: 'small', onclick: () => billPrint(s, r) }, '🖨 Client bill') : null))))))
+      : h('p', { class: 'muted' }, 'No approved attendance this month yet.'));
+  }
+  load();
+}
+function billPrint(s, r) {
+  const row = (a, b, c, d) => h('tr', {}, h('td', {}, a), h('td', { class: 'num' }, b), h('td', { class: 'num' }, c), h('td', { class: 'num' }, d));
+  printOut(h('div', {}, h('h2', {}, 'Bill for manpower supply'), h('div', {}, h('b', {}, me.company)), h('div', {}, `To: ${s.client || '—'} · Site: ${s.site} · Period: ${r.month}`),
+    h('table', { style: 'margin-top:12px' }, h('thead', {}, h('tr', {}, ['Description', 'Quantity', 'Rate', 'Amount'].map(x => h('th', {}, x)))),
+      h('tbody', {}, row('Manpower (mandays)', s.mandays, rupee(s.bill_rate), rupee(s.mandays * s.bill_rate)),
+        s.ot_hours && s.bill_ot_rate ? row('Overtime (hours)', s.ot_hours, rupee(s.bill_ot_rate), rupee(s.ot_hours * s.bill_ot_rate)) : null,
+        row('Subtotal', '', '', rupee(s.bill)), row(`GST @ ${r.gst_rate}%`, '', '', rupee(s.gst)), row(h('b', {}, 'Total'), '', '', h('b', {}, rupee(s.bill + s.gst))))),
+    h('p', { class: 'muted' }, 'Add your GSTIN, invoice number and bank details as your invoicing rules require.')));
+}
+
+// ------------------------------------------------------------------ settings
+async function settings(root) {
+  const s = await api('/settings');
+  const num = (k, label) => field(label, h('input', { name: k, type: 'number', step: 'any', value: s[k] }));
+  const form = h('form', { class: 'form' },
+    field('Company name', h('input', { name: 'company_name', value: s.company_name })), field('Company address (on slips)', h('input', { name: 'company_address', value: s.company_address })),
+    num('month_days', 'Paid days in a month'), num('shift_hours', 'Normal hours a day'), num('half_day_hours', 'Under this many hours = half day'), num('ot_multiplier', 'Overtime rate (× normal)'),
+    num('pf_rate_employee', 'PF employee %'), num('pf_rate_employer', 'PF employer %'), num('eps_rate', 'EPS % (part of employer share)'),
+    num('pf_wage_ceiling', 'PF wage ceiling ₹ (0 = none)'), num('eps_wage_ceiling', 'EPS/EDLI wage ceiling ₹'),
+    num('esic_rate_employee', 'ESIC employee %'), num('esic_rate_employer', 'ESIC employer %'), num('esic_wage_ceiling', 'ESIC applies up to ₹/month'),
+    num('gst_rate', 'GST on client bills %'), num('checkin_gap_minutes', 'Ignore repeat scans within (minutes)'),
+    field('Slip language', h('select', { name: 'slip_language' }, h('option', { value: 'en', selected: s.slip_language === 'en' }, 'English'), h('option', { value: 'hi', selected: s.slip_language === 'hi' }, 'हिंदी'))));
+  const users = await api('/users');
+  root.append(h('h1', {}, 'Settings'),
+    h('div', { class: 'card' }, h('p', { class: 'muted', style: 'margin-top:0' }, 'Statutory rates and ceilings change. Check these against the latest EPFO and ESIC notifications.'), form,
+      h('div', { class: 'bar', style: 'margin-top:14px' }, h('button', { class: 'primary', onclick: async () => { await api('/settings', 'PUT', val(form)); toast('Settings saved'); me.company = form.company_name.value; } }, 'Save settings'))),
+    h('h2', {}, 'People who can log in'),
+    h('table', {}, h('thead', {}, h('tr', {}, ['Name', 'Email', 'Role', 'Sites', ''].map(x => h('th', {}, x)))),
+      h('tbody', {}, users.map(u => h('tr', { style: u.active ? '' : 'opacity:.5' }, h('td', {}, u.name), h('td', {}, u.email), h('td', {}, u.role),
+        h('td', {}, u.role === 'admin' ? 'All' : u.sites.map(siteName).join(', ') || '—'),
+        h('td', {}, u.id !== me.id ? h('button', { class: 'small', onclick: async () => { await api(`/users/${u.id}`, 'PUT', { active: !u.active }); shell(); } }, u.active ? 'Deactivate' : 'Activate') : null))))),
+    h('p', {}, h('button', { onclick: userForm }, '+ Add supervisor or admin')),
+    h('h2', {}, 'Recent changes'), auditBox());
+}
+function auditBox() {
+  const box = h('div', { class: 'card muted', style: 'max-height:300px;overflow:auto;font-size:13px' }, 'Loading…');
+  api('/audit').then(list => box.replaceChildren(...list.map(a => h('div', {}, `${a.at.replace('T', ' ').slice(0, 16)} · ${a.user || 'worker'} · ${a.action}`))));
+  return box;
+}
+function userForm() {
+  const boxes = sitesCache.map(s => h('label', { class: 'check' }, h('input', { type: 'checkbox', value: s.id }), s.name));
+  const form = h('form', { class: 'form' }, field('Name', h('input', { name: 'name', required: true })), field('Email', h('input', { name: 'email', type: 'email', required: true })),
+    field('Password (8+ characters)', h('input', { name: 'password', type: 'password', minlength: 8 })),
+    field('Role', h('select', { name: 'role' }, h('option', { value: 'supervisor' }, 'Supervisor (their sites only, no pay data)'), h('option', { value: 'admin' }, 'Admin (everything)'))));
+  modal(h('h2', { style: 'margin-top:0' }, 'Add a login'), form, h('h2', {}, 'Sites they manage'), h('div', { class: 'form' }, boxes),
+    h('div', { class: 'bar', style: 'margin-top:14px' }, h('span', { class: 'grow' }), h('button', { onclick: () => $('#dlg').close() }, 'Cancel'),
+      h('button', { class: 'primary', onclick: async () => { const b = val(form); b.sites = boxes.map(l => l.firstChild).filter(i => i.checked).map(i => +i.value);
+        await api('/users', 'POST', b); $('#dlg').close(); toast('Login created'); shell(); } }, 'Create')));
+}
+
+boot();
+</script>
+</body>
+</html>

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0f3d3e">
+<title>Site check-in</title>
+<style>
+  :root { --bg:#f4f7f6; --card:#fff; --ink:#122; --dim:#5b6b6b; --brand:#0f766e; --brand-dk:#0f3d3e; --ok:#15803d; --warn:#b45309; --bad:#b91c1c; --line:#dde5e3; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:17px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { position:relative; background:var(--brand-dk); color:#fff; padding:18px 96px 22px 16px; }
+  header .co { opacity:.8; font-size:14px; } header h1 { margin:4px 0 0; font-size:24px; }
+  header .lang { position:absolute; top:14px; right:14px; z-index:1; background:rgba(255,255,255,.18); color:#fff; border:0; border-radius:20px; padding:8px 14px; font-size:15px; }
+  main { padding:16px; max-width:480px; margin:-12px auto 0; }
+  .card { background:var(--card); border-radius:16px; padding:16px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+  label { display:block; font-weight:600; margin:10px 0 6px; }
+  input[type=text], input[type=tel], input[type=password] { width:100%; font-size:20px; padding:14px; border:2px solid var(--line); border-radius:12px; background:#fff; }
+  input:focus { outline:none; border-color:var(--brand); }
+  .pin { letter-spacing:12px; text-align:center; }
+  button.big { width:100%; border:0; border-radius:14px; padding:18px; font-size:20px; font-weight:800; background:var(--brand); color:#fff; margin-top:14px; }
+  button.big:disabled { opacity:.5; }
+  button.ghost { width:100%; border:2px dashed var(--line); background:#fff; border-radius:14px; padding:16px; font-size:17px; color:var(--brand-dk); font-weight:700; }
+  .gps { display:flex; gap:10px; align-items:center; font-size:15px; color:var(--dim); }
+  .dot { width:12px; height:12px; border-radius:50%; background:#cbd5d4; flex:none; } .dot.ok { background:var(--ok); } .dot.wait { background:#f59e0b; animation:blink 1s infinite; } .dot.bad { background:var(--bad); }
+  @keyframes blink { 50% { opacity:.3; } }
+  #selfiePrev { display:none; width:100%; border-radius:12px; margin-top:10px; }
+  .err { color:var(--bad); font-weight:600; margin-top:10px; min-height:1.2em; }
+  .result { text-align:center; padding:28px 16px; }
+  .tick { width:96px; height:96px; border-radius:50%; margin:0 auto 14px; display:grid; place-items:center; font-size:54px; color:#fff; background:var(--ok); }
+  .tick.warn { background:var(--warn); }
+  .result h2 { margin:6px 0; font-size:26px; } .result .meta { color:var(--dim); font-size:16px; }
+  .stamp { display:inline-block; margin-top:14px; padding:6px 14px; border-radius:20px; font-weight:800; letter-spacing:.5px; font-size:14px; background:#dcfce7; color:var(--ok); }
+  .stamp.warn { background:#fef3c7; color:var(--warn); }
+  small.hint { color:var(--dim); display:block; margin-top:6px; }
+</style>
+</head>
+<body>
+<header><button class="lang" id="lang">हिंदी</button><div class="co" id="company">…</div><h1 id="siteName">Site check-in</h1></header>
+<main id="main">
+  <div class="card">
+    <div class="gps"><span class="dot wait" id="gpsDot"></span><span id="gpsText"></span></div>
+  </div>
+  <div class="card">
+    <label for="worker" data-t="who"></label>
+    <input id="worker" type="text" autocomplete="off" autocapitalize="characters" inputmode="text">
+    <label for="pin" data-t="pin"></label>
+    <input id="pin" class="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off">
+    <label data-t="selfie"></label>
+    <button class="ghost" id="selfieBtn" data-t="takeSelfie"></button>
+    <input id="selfieInput" type="file" accept="image/*" capture="user" hidden>
+    <img id="selfiePrev" alt="">
+    <button class="big" id="go" data-t="submit"></button>
+    <div class="err" id="err"></div>
+  </div>
+  <small class="hint" data-t="privacy"></small>
+</main>
+<script>
+const T = {
+  en: { who: 'Worker code or phone number', pin: '4-digit PIN', selfie: 'Selfie', takeSelfie: '📷 Take selfie', retake: '📷 Retake selfie', submit: 'Mark attendance',
+        gpsWait: 'Finding your location…', gpsOk: m => `Location found (±${m} m)`, gpsBad: 'Location is off. Turn on GPS/location and allow it for this page.',
+        gpsNoFence: 'This site has no location check', needWho: 'Enter your worker code or phone number', needPin: 'Enter your 4-digit PIN',
+        needSelfie: 'Please take a selfie', sending: 'Sending…', fromGate: m => `${m} m from site`, flagged: 'Recorded, but flagged for review',
+        flagNote: r => `Your supervisor will check this: ${r}`, verified: 'VERIFIED ON SITE', again: 'Done', privacy: 'Your photo and location are used only for attendance at this site.',
+        notActive: 'This QR code is not active. Ask your supervisor.' },
+  hi: { who: 'वर्कर कोड या फ़ोन नंबर', pin: '4 अंकों का PIN', selfie: 'सेल्फ़ी', takeSelfie: '📷 सेल्फ़ी लें', retake: '📷 फिर से सेल्फ़ी लें', submit: 'हाज़िरी लगाएँ',
+        gpsWait: 'आपकी लोकेशन ढूँढ रहे हैं…', gpsOk: m => `लोकेशन मिल गई (±${m} मी)`, gpsBad: 'लोकेशन बंद है। GPS चालू करें और इस पेज को अनुमति दें।',
+        gpsNoFence: 'इस साइट पर लोकेशन जाँच नहीं है', needWho: 'अपना वर्कर कोड या फ़ोन नंबर लिखें', needPin: 'अपना 4 अंकों का PIN लिखें',
+        needSelfie: 'कृपया सेल्फ़ी लें', sending: 'भेज रहे हैं…', fromGate: m => `साइट से ${m} मी`, flagged: 'दर्ज हुआ, पर जाँच के लिए चिह्नित',
+        flagNote: r => `सुपरवाइज़र इसे देखेंगे: ${r}`, verified: 'साइट पर सत्यापित', again: 'ठीक है', privacy: 'आपकी फ़ोटो और लोकेशन सिर्फ़ इस साइट की हाज़िरी के लिए है।',
+        notActive: 'यह QR कोड सक्रिय नहीं है। सुपरवाइज़र से पूछें।' },
+};
+const $ = s => document.querySelector(s);
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+let lang = store.get('sm-lang') || 'en', pos = null, gpsState = 'wait', selfie = null, site = null;
+const token = location.pathname.split('/').pop();
+function t(k, ...a) { const v = T[lang][k]; return typeof v === 'function' ? v(...a) : v; }
+function paint() {
+  document.documentElement.lang = lang; $('#lang').textContent = lang === 'en' ? 'हिंदी' : 'English';
+  document.querySelectorAll('[data-t]').forEach(el => el.textContent = t(el.dataset.t));
+  if (selfie) $('#selfieBtn').textContent = t('retake');
+  $('#gpsText').textContent = gpsState === 'ok' ? t('gpsOk', Math.round(pos.coords.accuracy)) : gpsState === 'bad' ? t('gpsBad') : gpsState === 'none' ? t('gpsNoFence') : t('gpsWait');
+  $('#gpsDot').className = 'dot ' + (gpsState === 'ok' || gpsState === 'none' ? 'ok' : gpsState);
+}
+$('#lang').onclick = () => { lang = lang === 'en' ? 'hi' : 'en'; store.set('sm-lang', lang); paint(); };
+$('#worker').value = store.get('sm-worker') || '';
+
+fetch('/api/public/site?t=' + encodeURIComponent(token)).then(r => r.json()).then(j => {
+  if (j.error) { $('#main').innerHTML = ''; const c = document.createElement('div'); c.className = 'card'; c.textContent = t('notActive'); $('#main').append(c); return; }
+  site = j; $('#siteName').textContent = j.name; $('#company').textContent = j.company;
+  if (!j.fenced) { gpsState = 'none'; paint(); }
+});
+if (navigator.geolocation) {
+  navigator.geolocation.watchPosition(p => { pos = p; if (gpsState !== 'none') gpsState = 'ok'; paint(); },
+    () => { if (gpsState !== 'none') gpsState = 'bad'; paint(); }, { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 });
+} else gpsState = 'bad';
+
+// selfie: shrink to 480 px and stamp it with site, time and location so it can't be reused
+$('#selfieBtn').onclick = () => $('#selfieInput').click();
+$('#selfieInput').onchange = e => {
+  const file = e.target.files[0]; if (!file) return;
+  const img = new Image();
+  img.onload = () => {
+    const s = Math.min(1, 480 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
+    cv.width = Math.round(img.width * s); cv.height = Math.round(img.height * s);
+    const x = cv.getContext('2d'); x.drawImage(img, 0, 0, cv.width, cv.height);
+    const stamp = [site ? site.name : '', new Date().toLocaleString('en-IN'), pos ? `${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}` : 'no GPS'];
+    x.fillStyle = 'rgba(0,0,0,.55)'; x.fillRect(0, cv.height - 58, cv.width, 58);
+    x.fillStyle = '#fff'; x.font = 'bold 15px system-ui, sans-serif';
+    stamp.forEach((l, i) => x.fillText(l, 10, cv.height - 40 + i * 17));
+    selfie = cv.toDataURL('image/jpeg', 0.72);
+    $('#selfiePrev').src = selfie; $('#selfiePrev').style.display = 'block'; paint();
+    URL.revokeObjectURL(img.src);
+  };
+  img.src = URL.createObjectURL(file);
+};
+
+$('#go').onclick = async () => {
+  const worker = $('#worker').value.trim(), pin = $('#pin').value.trim();
+  $('#err').textContent = '';
+  if (!worker) return $('#err').textContent = t('needWho');
+  if (!/^\d{4}$/.test(pin)) return $('#err').textContent = t('needPin');
+  if (!selfie) return $('#err').textContent = t('needSelfie');
+  $('#go').disabled = true; $('#go').textContent = t('sending');
+  try {
+    const r = await fetch('/api/public/checkin', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'site-manager' },
+      body: JSON.stringify({ token, worker, pin, selfie, lat: pos ? pos.coords.latitude : null, lng: pos ? pos.coords.longitude : null, accuracy: pos ? pos.coords.accuracy : null }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Error');
+    store.set('sm-worker', worker);
+    showResult(j);
+  } catch (e) { $('#err').textContent = e.message; $('#go').disabled = false; $('#go').textContent = t('submit'); }
+};
+function showResult(j) {
+  const warn = j.flagged, main = $('#main'); main.innerHTML = '';
+  const card = document.createElement('div'); card.className = 'card result';
+  const tick = document.createElement('div'); tick.className = 'tick' + (warn ? ' warn' : ''); tick.textContent = warn ? '!' : '✓';
+  const h = document.createElement('h2'); h.textContent = warn ? t('flagged') : j.message;
+  const meta = document.createElement('div'); meta.className = 'meta';
+  meta.textContent = [j.name, j.site, `${j.time} · ${j.result === 'out' ? 'OUT' : 'IN'}`, j.distance_m != null ? t('fromGate', j.distance_m) : ''].filter(Boolean).join(' · ');
+  card.append(tick, h, meta);
+  if (warn) { const n = document.createElement('div'); n.className = 'meta'; n.style.marginTop = '10px'; n.textContent = t('flagNote', j.flag_reason); card.append(n); }
+  else if (j.result === 'in' || j.result === 'out') { const s = document.createElement('div'); s.className = 'stamp'; s.textContent = t('verified'); card.append(s); }
+  main.append(card);
+  if (navigator.vibrate) navigator.vibrate(warn ? [200, 100, 200] : 120);
+}
+paint();
+</script>
+</body>
+</html>
